@@ -3,7 +3,7 @@ import { api } from '../api/client';
 import type { PatientAccount } from '../api/client';
 import {
   User, Phone, LogIn, Clock, AlertTriangle, CheckCircle2,
-  FileText, ArrowLeft
+  FileText, ArrowLeft, Pill, Stethoscope
 } from 'lucide-react';
 
 interface VisitRecord {
@@ -15,6 +15,7 @@ interface VisitRecord {
   triage: any;
   clinicianHandoff: any;
   doctorSuggestion: any;
+  treatmentPlan: string[] | null;
   approvalStatus: string;
   createdAt: string;
   updatedAt: string;
@@ -252,6 +253,64 @@ export default function PatientPortalPage() {
                       <div>
                         <h5 className="text-[10px] font-bold text-slate-400 uppercase mb-1">Clinical Summary</h5>
                         <p className="text-xs text-slate-600">{visit.clinicianHandoff.summary}</p>
+                      </div>
+                    )}
+
+                    {/* Possible Concerns */}
+                    {visit.clinicianHandoff?.possibleConcerns?.length > 0 && (
+                      <div>
+                        <h5 className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-amber-500" /> Possible Concerns
+                        </h5>
+                        <div className="flex flex-wrap gap-1">
+                          {visit.clinicianHandoff.possibleConcerns.map((c: string, i: number) => (
+                            <span key={i} className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">{c}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Prescribed Treatment Plan */}
+                    {visit.treatmentPlan && visit.treatmentPlan.length > 0 && (
+                      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 space-y-2">
+                        <h5 className="text-[10px] font-bold text-indigo-700 uppercase flex items-center gap-1.5">
+                          <Pill className="w-3.5 h-3.5 text-indigo-600" /> Prescribed Treatment Plan
+                        </h5>
+                        <div className="space-y-1.5">
+                          {visit.treatmentPlan.map((step: string, idx: number) => (
+                            <div key={idx} className="flex gap-2 text-xs text-slate-700">
+                              <span className="text-indigo-600 font-black shrink-0">{idx + 1}.</span>
+                              <span className="font-semibold">{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Recommended Actions */}
+                    {visit.clinicianHandoff?.recommendedActions?.length > 0 && (
+                      <div>
+                        <h5 className="text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1">
+                          <Stethoscope className="w-3 h-3 text-emerald-500" /> Recommended Actions
+                        </h5>
+                        <ul className="list-disc pl-4 text-xs font-semibold text-slate-600 space-y-0.5">
+                          {visit.clinicianHandoff.recommendedActions.map((a: string, i: number) => (
+                            <li key={i}>{a}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Doctor Suggestion */}
+                    {visit.doctorSuggestion && (
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 space-y-1">
+                        <h5 className="text-[10px] font-bold text-emerald-700 uppercase">Assigned Doctor</h5>
+                        <p className="text-xs font-semibold text-slate-700">
+                          Dr. {visit.doctorSuggestion.doctorName} • {visit.doctorSuggestion.specialty} • Floor {visit.doctorSuggestion.floor}, Room {visit.doctorSuggestion.room}
+                        </p>
+                        {visit.doctorSuggestion.appointmentTime && (
+                          <p className="text-[10px] text-slate-500">Appointment: {visit.doctorSuggestion.appointmentTime}</p>
+                        )}
                       </div>
                     )}
                   </div>

@@ -826,35 +826,98 @@ export default function DoctorDashboardPage() {
                 <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
                   <ClipboardList className="w-6 h-6 text-indigo-650" /> Patient Follow-ups
                 </h3>
-                <p className="text-xs text-slate-500 font-semibold mt-0.5">Approved patients requiring follow-up consultations and treatment monitoring</p>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Approved patients with prescribed treatment plans and follow-up monitoring</p>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {sessions.filter((s: any) => s.approvalStatus === 'approved').map((s: any) => (
-                  <div key={s.id} className="glass bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-display font-black text-slate-900 text-sm uppercase">{s.profile?.name || 'Unknown'}</h4>
-                        <span className="text-[9px] font-black font-mono bg-green-50 border border-green-200 text-green-800 px-2 py-0.5 rounded uppercase">
-                          Approved
-                        </span>
-                        {['emergency','urgent','high'].includes(s.triage?.urgency) && (
-                          <span className="text-[9px] font-black bg-red-100 border border-red-200 text-red-750 px-2 py-0.5 rounded uppercase">Urgent</span>
-                        )}
+                  <div key={s.id} className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                    {/* Patient Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-display font-black text-slate-900 text-sm uppercase">{s.profile?.name || 'Unknown'}</h4>
+                          <span className="text-[9px] font-black font-mono bg-green-50 border border-green-200 text-green-800 px-2 py-0.5 rounded uppercase">
+                            Approved
+                          </span>
+                          {['emergency','urgent','high'].includes(s.triage?.urgency) && (
+                            <span className="text-[9px] font-black bg-red-100 border border-red-200 text-red-750 px-2 py-0.5 rounded uppercase">Urgent</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                          Age: {s.profile?.age || '?'} • Gender: {s.profile?.gender || '?'} • Dept: {s.triage?.department}
+                        </p>
                       </div>
-                      <p className="text-xs text-slate-550 font-bold leading-relaxed">{(s.symptoms?.symptoms || []).join(', ') || 'Symptom review needed'}</p>
-                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5 pt-1">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" /> Intake: {new Date(s.createdAt || s.updatedAt).toLocaleDateString()}
+                      <div className="flex gap-2 shrink-0">
+                        <button onClick={() => { setSelectedSession(s); setShowHandoffModal(true); }}
+                          className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-wider">
+                          View Full Intake
+                        </button>
+                        <button onClick={() => { showToast(`Follow-up completed for ${s.profile?.name}. Marked in system.`, 'success'); }}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-extrabold shadow-md transition-all uppercase tracking-wider">
+                          Complete
+                        </button>
                       </div>
                     </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button onClick={() => { setSelectedSession(s); setShowHandoffModal(true); }}
-                        className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-wider">
-                        View Details
-                      </button>
-                      <button onClick={() => { showToast(`Follow-up completed for ${s.profile?.name}. Marked in system.`, 'success'); }}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-extrabold shadow-md transition-all uppercase tracking-wider">
-                        Complete
-                      </button>
+
+                    {/* Symptoms */}
+                    <div className="p-3 bg-slate-50 rounded-xl border space-y-1">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Presenting Symptoms</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(s.symptoms?.symptoms || []).map((sym: string, idx: number) => (
+                          <span key={idx} className="text-[10px] font-bold bg-white text-slate-700 px-2.5 py-0.5 rounded-full border">{sym}</span>
+                        ))}
+                        {(!s.symptoms?.symptoms || s.symptoms.symptoms.length === 0) && (
+                          <span className="text-[10px] text-slate-400 italic">No symptoms recorded</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Possible Concerns */}
+                    {(s.clinicianHandoff?.possibleConcerns?.length > 0) && (
+                      <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-xl space-y-1">
+                        <span className="text-[9px] font-bold text-amber-700 uppercase tracking-widest block">AI Possible Concerns</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {s.clinicianHandoff.possibleConcerns.map((c: string, idx: number) => (
+                            <span key={idx} className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full border border-amber-200">{c}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Prescribed Treatment Plan */}
+                    <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl space-y-2">
+                      <span className="text-[9px] font-black text-indigo-800 uppercase tracking-widest flex items-center gap-1.5">
+                        <BrainCircuit className="w-3.5 h-3.5 text-indigo-600" /> Prescribed Treatment Plan
+                      </span>
+                      {s.treatmentPlan && s.treatmentPlan.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {s.treatmentPlan.map((step: string, idx: number) => (
+                            <div key={idx} className="flex gap-2 text-xs font-semibold text-slate-700">
+                              <span className="text-indigo-600 font-black shrink-0">{idx + 1}.</span>
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">No treatment plan generated yet. Open full intake to generate one via AI.</p>
+                      )}
+                    </div>
+
+                    {/* Recommended Actions */}
+                    {(s.clinicianHandoff?.recommendedActions?.length > 0) && (
+                      <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-1.5">
+                        <span className="text-[9px] font-bold text-emerald-700 uppercase tracking-widest block">Recommended Follow-up Actions</span>
+                        <ul className="list-disc pl-4 text-xs font-semibold text-slate-650 space-y-0.5">
+                          {s.clinicianHandoff.recommendedActions.map((a: string, idx: number) => (
+                            <li key={idx}>{a}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Intake Date */}
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5 pt-1 border-t">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" /> Intake: {new Date(s.createdAt || s.updatedAt).toLocaleDateString()} at {new Date(s.createdAt || s.updatedAt).toLocaleTimeString()}
                     </div>
                   </div>
                 ))}

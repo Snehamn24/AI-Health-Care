@@ -270,8 +270,8 @@ export function dbGetStats() {
 }
 
 export function dbGetSessionsByDepartment(dept: string): DbSession[] {
-  // Get all complete sessions where triage routed to this department
-  const all = db.prepare("SELECT * FROM sessions WHERE phase = 'complete' ORDER BY updated_at DESC").all() as DbSession[];
+  // Get all complete sessions where triage routed to this department AND patient is registered
+  const all = db.prepare("SELECT * FROM sessions WHERE phase = 'complete' AND patient_id IS NOT NULL ORDER BY updated_at DESC").all() as DbSession[];
   return all.filter(s => {
     try {
       const triage = JSON.parse(s.triage_json || '{}');
