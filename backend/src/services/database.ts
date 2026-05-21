@@ -269,4 +269,15 @@ export function dbGetStats() {
   return { patients, doctors, sessions, departments, dbPath: DB_PATH };
 }
 
+export function dbGetSessionsByDepartment(dept: string): DbSession[] {
+  // Get all complete sessions where triage routed to this department
+  const all = db.prepare("SELECT * FROM sessions WHERE phase = 'complete' ORDER BY updated_at DESC").all() as DbSession[];
+  return all.filter(s => {
+    try {
+      const triage = JSON.parse(s.triage_json || '{}');
+      return triage.department && triage.department.toLowerCase() === dept.toLowerCase();
+    } catch { return false; }
+  });
+}
+
 export { db };

@@ -186,4 +186,15 @@ export const api = {
 
   // Database stats
   getDbStats: () => request<DbStats>('/db/stats'),
+
+  // Clinical aggregate stats (for admin dashboard)
+  getClinicalStats: () => request<{
+    totalEmergencies: number; totalAppointments: number;
+    totalPatientCards: number; totalFollowUps: number;
+    checkedIn: number; waiting: number;
+  }>('/clinical/stats'),
+
+  // Sessions routed to a specific department (for doctor portal)
+  getSessionsByDepartment: (dept: string) =>
+    request<any[]>(`/sessions/by-department?dept=${encodeURIComponent(dept)}`),
 };

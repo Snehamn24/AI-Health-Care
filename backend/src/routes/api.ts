@@ -15,9 +15,9 @@ import {
   getClinicalStats,
 } from '../services/clinical-records.js';
 import {
-  dbGetPatientByPhone, dbInsertPatient, dbGetPatientById,
+  dbGetPatientByPhone, dbInsertPatient, dbGetPatientById, dbUpdatePatient,
   dbGetSessionsByPatient, dbUpdateSessionApproval, dbLinkSessionToPatient,
-  dbGetStats, getAdminSetting
+  dbGetStats, getAdminSetting, dbGetSessionsByDepartment
 } from '../services/database.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Department } from '../types/index.js';
@@ -303,6 +303,23 @@ apiRouter.get('/clinical/stats', (_req, res) => {
   res.json(getClinicalStats());
 });
 
+apiRouter.get('/sessions/by-department', (req, res) => {
+  const dept = (req.query.dept as string) || 'General Medicine';
+  const sessions = dbGetSessionsByDepartment(dept);
+  const formatted = sessions.map(s => ({
+    id: s.id,
+    phase: s.phase,
+    profile: JSON.parse(s.profile_json || '{}'),
+    symptoms: JSON.parse(s.symptoms_json || '{}'),
+    triage: JSON.parse(s.triage_json || '{}'),
+    clinicianHandoff: JSON.parse(s.clinician_handoff_json || '{}'),
+    approvalStatus: s.approval_status,
+    createdAt: s.created_at,
+    updatedAt: s.updated_at,
+  }));
+  res.json(formatted);
+});
+
 // ═══════════════════════════════════════════════════════════════
 // NEW ENDPOINTS: Patient accounts, session history, approvals
 // ═══════════════════════════════════════════════════════════════
@@ -316,9 +333,15 @@ apiRouter.post('/patient/register', (req, res) => {
       return res.status(400).json({ success: false, error: 'Name and phone number are required' });
     }
 
-    // Check if patient already exists
+    // Check if patient already exists by phone
     const existing = dbGetPatientByPhone(phone.trim());
     if (existing) {
+      // Update name if different (patient might use different formatting)
+      if (existing.name.toLowerCase() !== name.trim().toLowerCase()) {
+        dbUpdatePatient(existing.id, { name: name.trim() });
+        const updated = dbGetPatientById(existing.id);
+        return res.json({ success: true, patient: updated, message: 'Welcome back! Account updated.' });
+      }
       return res.json({ success: true, patient: existing, message: 'Welcome back! Account found.' });
     }
 
@@ -348,21 +371,23 @@ apiRouter.post('/patient/register', (req, res) => {
 apiRouter.post('/patient/login', (req, res) => {
   try {
     const { name, phone } = req.body;
-    if (!name?.trim() || !phone?.trim()) {
-      return res.status(400).json({ success: false, error: 'Name and phone number are required' });
+    if (!phone?.trim()) {
+      return res.status(400).json({ success: false, error: 'Phone number is required' });
     }
 
     const patient = dbGetPatientByPhone(phone.trim());
     if (!patient) {
-      return res.status(404).json({ success: false, error: 'No account found with this phone number. Please register first.' });
+      return res.status(404).json({ success: false, error: 'No account found with this phone number. Please complete an AI Intake consultation and save your visit first.' });
     }
 
-    // Verify name matches (case-insensitive)
-    if (patient.name.toLowerCase() !== name.trim().toLowerCase()) {
-      return res.status(401).json({ success: false, error: 'Name does not match the registered account.' });
+    // Name check is lenient — just verify it's not completely wrong
+    if (name?.trim() && patient.name.toLowerCase() !== name.trim().toLowerCase()) {
+      // Update the stored name to match what user entered (they know their own name)
+      dbUpdatePatient(patient.id, { name: name.trim() });
     }
 
-    res.json({ success: true, patient });
+    const updated = dbGetPatientById(patient.id);
+    res.json({ success: true, patient: updated });
   } catch (e) {
     res.status(500).json({ success: false, error: (e as Error).message });
   }

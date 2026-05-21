@@ -225,7 +225,7 @@ export default function DashboardPage() {
 
   // Dynamic status counters
   const activeEmergencies = sessions.filter(s => s.triage?.urgency === 'emergency' || s.triage?.urgency === 'urgent').length;
-  const criticalCount = activeEmergencies || 4;
+  const criticalCount = activeEmergencies;
 
   return (
     <div className="min-h-[calc(100vh-65px)] flex bg-slate-50 text-slate-700 font-sans overflow-hidden">
@@ -392,16 +392,16 @@ export default function DashboardPage() {
               {/* Stat Tiles */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Active Admissions</span>
-                  <div className="text-2xl font-black text-slate-800 font-display">12</div>
-                  <span className="text-[10px] text-slate-500 font-semibold">Triage Resolved</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Active Intake Sessions</span>
+                  <div className="text-2xl font-black text-slate-800 font-display">{sessions.length}</div>
+                  <span className="text-[10px] text-slate-500 font-semibold">Total in database</span>
                 </div>
 
                 <div className="glass bg-white p-5 border-l-4 border-l-red-500 border border-slate-200 rounded-2xl shadow-sm space-y-1">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Emergency Cases</span>
                   <div className="text-2xl font-black text-red-650 font-display flex items-center gap-2">
                     {criticalCount}
-                    <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />
+                    {criticalCount > 0 && <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />}
                   </div>
                   <span className="text-[10px] text-slate-500 font-semibold">High Priority Alert</span>
                 </div>

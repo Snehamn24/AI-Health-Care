@@ -301,14 +301,28 @@ Return a JSON array of exactly 3 strings, each representing a clear, actionable 
 function demoSymptomAnalysis(message: string) {
   const lower = message.toLowerCase();
   const symptoms: string[] = [];
-  if (/chest|heart/.test(lower)) symptoms.push('chest pain');
-  if (/fever|temperature/.test(lower)) symptoms.push('fever');
-  if (/headache|head\s*ache/.test(lower)) symptoms.push('headache');
-  if (/breath|breathing|dyspnea/.test(lower)) symptoms.push('shortness of breath');
-  if (/rash|itch|skin/.test(lower)) symptoms.push('rash');
-  if (/joint|knee|ankle|fracture/.test(lower)) symptoms.push('joint pain');
-  if (/throat|ear|hearing/.test(lower)) symptoms.push('sore throat');
-  if (/anxiety|depress|mood/.test(lower)) symptoms.push('anxiety');
+  if (/chest|heart|palpitation/.test(lower)) symptoms.push('chest pain');
+  if (/fever|temperature|chills/.test(lower)) symptoms.push('fever');
+  if (/headache|head\s*ache|migraine/.test(lower)) symptoms.push('headache');
+  if (/breath|breathing|dyspnea|wheez/.test(lower)) symptoms.push('shortness of breath');
+  if (/rash|itch|skin|hives|eczema/.test(lower)) symptoms.push('skin rash');
+  if (/joint|knee|ankle|fracture|sprain/.test(lower)) symptoms.push('joint pain');
+  if (/leg\s*pain|leg\s*ache|calf|thigh|shin/.test(lower)) symptoms.push('leg pain');
+  if (/back\s*pain|back\s*ache|spine|lumbar/.test(lower)) symptoms.push('back pain');
+  if (/neck\s*pain|neck\s*ache|stiff\s*neck/.test(lower)) symptoms.push('neck pain');
+  if (/shoulder|arm\s*pain|elbow|wrist/.test(lower)) symptoms.push('arm pain');
+  if (/stomach|abdomen|abdominal|belly|nausea|vomit/.test(lower)) symptoms.push('abdominal pain');
+  if (/diarr|constipat|bloat|gas|indigest/.test(lower)) symptoms.push('digestive issues');
+  if (/throat|sore\s*throat|tonsil|swallow/.test(lower)) symptoms.push('sore throat');
+  if (/ear|hearing|tinnitus/.test(lower)) symptoms.push('ear pain');
+  if (/sinus|nasal|nose|congestion|sneez/.test(lower)) symptoms.push('nasal congestion');
+  if (/cough|phlegm|mucus/.test(lower)) symptoms.push('cough');
+  if (/anxiety|panic|nervous|stress|worry/.test(lower)) symptoms.push('anxiety');
+  if (/depress|sad|mood|sleep\s*less|insomnia/.test(lower)) symptoms.push('depression');
+  if (/eye|vision|blur|sight/.test(lower)) symptoms.push('vision problems');
+  if (/dizz|vertigo|faint|lightheaded/.test(lower)) symptoms.push('dizziness');
+  if (/urin|bladder|kidney/.test(lower)) symptoms.push('urinary issues');
+  if (/pain/.test(lower) && symptoms.length === 0) symptoms.push('body pain');
   if (symptoms.length === 0) symptoms.push('general discomfort');
 
   const questions: string[] = [];
@@ -319,13 +333,17 @@ function demoSymptomAnalysis(message: string) {
     questions.push('Do you know your current temperature, and how long have you had the fever?');
   } else if (symptoms.includes('headache')) {
     questions.push('Have you noticed any dizziness, blurred vision, or weakness?');
+  } else if (symptoms.includes('leg pain') || symptoms.includes('back pain') || symptoms.includes('joint pain')) {
+    questions.push('Did the pain start after an injury or gradually? Is there any swelling or redness?');
+  } else if (symptoms.includes('abdominal pain')) {
+    questions.push('Where exactly is the pain located? Is it sharp or dull? Any nausea or vomiting?');
   } else {
     questions.push('Can you tell me more about when your symptoms started and how severe they feel?');
   }
 
   return {
     symptoms,
-    severity: /severe|worst|can't|emergency/i.test(lower) ? 'high' : 'medium',
+    severity: /severe|worst|can't|emergency|unbearable|excruciating/i.test(lower) ? 'high' : 'medium',
     intent: 'symptom_report',
     medicalRelevance: 'Patient-reported symptoms for triage routing',
     suggestedQuestions: questions,
@@ -334,14 +352,18 @@ function demoSymptomAnalysis(message: string) {
 
 function demoStructuredIntake(symptoms: SymptomData) {
   const list = symptoms.symptoms.length ? symptoms.symptoms : ['general symptoms'];
+  const combined = list.join(' ').toLowerCase();
   let dept: Department = 'General Medicine';
-  if (list.some((s) => /chest|heart/.test(s))) dept = 'Cardiology';
-  else if (list.some((s) => /head|dizz|vision|weak/.test(s))) dept = 'Neurology';
-  else if (list.some((s) => /breath|lung|wheez/.test(s))) dept = 'Pulmonology';
-  else if (list.some((s) => /joint|bone|fracture/.test(s))) dept = 'Orthopedics';
-  else if (list.some((s) => /rash|skin|itch/.test(s))) dept = 'Dermatology';
-  else if (list.some((s) => /throat|ear/.test(s))) dept = 'ENT';
-  else if (list.some((s) => /anxiety|depress|mood/.test(s))) dept = 'Psychiatry';
+  if (/chest|heart|palpitation/.test(combined)) dept = 'Cardiology';
+  else if (/headache|migraine|dizz|vertigo|vision|weak|seizure/.test(combined)) dept = 'Neurology';
+  else if (/breath|lung|wheez|cough|asthma|copd/.test(combined)) dept = 'Pulmonology';
+  else if (/joint|bone|fracture|leg\s*pain|back\s*pain|knee|ankle|spine|lumbar|shoulder|arm\s*pain|neck\s*pain|sprain|body\s*pain/.test(combined)) dept = 'Orthopedics';
+  else if (/rash|skin|itch|hives|eczema|psoriasis|acne/.test(combined)) dept = 'Dermatology';
+  else if (/throat|ear|sinus|nasal|hearing|tonsil|nose/.test(combined)) dept = 'ENT';
+  else if (/anxiety|depress|panic|mood|insomnia|stress|ptsd/.test(combined)) dept = 'Psychiatry';
+  else if (/stomach|abdomen|nausea|vomit|diarr|constipat|bloat|digest|gastric/.test(combined)) dept = 'Gastroenterology';
+  else if (/child|pediatr|infant|toddler/.test(combined)) dept = 'Pediatrics';
+  else if (/tumor|cancer|lump|chemotherapy/.test(combined)) dept = 'Oncology';
 
   return {
     symptoms: list,
@@ -362,13 +384,24 @@ function demoTriageLLM(symptoms: string[], redFlags: string[]) {
     };
   }
   const text = symptoms.join(' ').toLowerCase();
-  if (/chest/.test(text))
-    return {
-      urgency: 'high' as UrgencyLevel,
-      department: 'Cardiology' as Department,
-      reasoning: 'Cardiac-related symptoms warrant expedited cardiology review.',
-      confidence: 0.85,
-    };
+  if (/chest|heart|palpitation/.test(text))
+    return { urgency: 'high' as UrgencyLevel, department: 'Cardiology' as Department, reasoning: 'Cardiac-related symptoms warrant expedited cardiology review.', confidence: 0.85 };
+  if (/headache|migraine|dizz|vertigo|vision|seizure/.test(text))
+    return { urgency: 'medium' as UrgencyLevel, department: 'Neurology' as Department, reasoning: 'Neurological symptoms require specialist evaluation.', confidence: 0.8 };
+  if (/breath|wheez|cough|lung|asthma/.test(text))
+    return { urgency: 'medium' as UrgencyLevel, department: 'Pulmonology' as Department, reasoning: 'Respiratory symptoms require pulmonology assessment.', confidence: 0.8 };
+  if (/joint|bone|fracture|leg|back|knee|ankle|spine|shoulder|arm|neck|sprain|body\s*pain/.test(text))
+    return { urgency: 'medium' as UrgencyLevel, department: 'Orthopedics' as Department, reasoning: 'Musculoskeletal symptoms indicate orthopedic consultation needed.', confidence: 0.8 };
+  if (/rash|skin|itch|hives|eczema/.test(text))
+    return { urgency: 'low' as UrgencyLevel, department: 'Dermatology' as Department, reasoning: 'Dermatological symptoms for specialist evaluation.', confidence: 0.8 };
+  if (/throat|ear|sinus|nasal|hearing|tonsil|nose/.test(text))
+    return { urgency: 'low' as UrgencyLevel, department: 'ENT' as Department, reasoning: 'ENT symptoms for otolaryngology assessment.', confidence: 0.8 };
+  if (/anxiety|depress|panic|mood|insomnia|stress/.test(text))
+    return { urgency: 'medium' as UrgencyLevel, department: 'Psychiatry' as Department, reasoning: 'Psychiatric symptoms warrant mental health evaluation.', confidence: 0.8 };
+  if (/stomach|abdomen|nausea|vomit|diarr|constipat|bloat|digest|gastric/.test(text))
+    return { urgency: 'medium' as UrgencyLevel, department: 'Gastroenterology' as Department, reasoning: 'Gastrointestinal symptoms require gastroenterology review.', confidence: 0.8 };
+  if (/tumor|cancer|lump/.test(text))
+    return { urgency: 'high' as UrgencyLevel, department: 'Oncology' as Department, reasoning: 'Possible oncological concern needs urgent specialist review.', confidence: 0.85 };
   return {
     urgency: 'medium' as UrgencyLevel,
     department: 'General Medicine' as Department,

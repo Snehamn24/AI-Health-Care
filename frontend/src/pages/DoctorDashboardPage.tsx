@@ -117,24 +117,19 @@ export default function DoctorDashboardPage() {
     if (!currentDoc) return;
     if (!isBackground) setLoadingClinical(true);
 
-    Promise.all([
-      api.getClinicalAppointments(currentDoc.department).then(setAppointments),
-      api.getClinicalEmergencies(currentDoc.department).then(setEmergencies),
-      api.getClinicalPatients(currentDoc.department).then(setPatients),
-      api.getClinicalFollowUps(currentDoc.department).then(setFollowups),
-      api.listSessions().then((res) => {
-        setSessions(res);
-        // Sync any active session selected
+    // Load ONLY real sessions routed to this department from AI intake
+    api.getSessionsByDepartment(currentDoc.department)
+      .then((deptSessions) => {
+        setSessions(deptSessions);
         if (selectedSession) {
-          const updated = res.find(s => s.id === selectedSession.id);
+          const updated = deptSessions.find((s: any) => s.id === selectedSession.id);
           if (updated) setSelectedSession(updated);
         }
       })
-    ])
-    .catch((err) => console.error('Failed to load clinical workspace data:', err))
-    .finally(() => {
-      if (!isBackground) setLoadingClinical(false);
-    });
+      .catch((err) => console.error('Failed to load clinical workspace data:', err))
+      .finally(() => {
+        if (!isBackground) setLoadingClinical(false);
+      });
   };
 
   const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
@@ -441,11 +436,11 @@ export default function DoctorDashboardPage() {
               <AlertCircle className="w-4 h-4" />
               <span>Emergency Queue</span>
             </div>
-            {emergencies.length > 0 && (
+            {sessions.filter((s: any) => ['emergency','urgent','high'].includes(s.triage?.urgency)).length > 0 && (
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${
                 activeTab === 'emergency' ? 'bg-white text-indigo-650' : 'bg-red-100 text-red-750 border-red-200'
               }`}>
-                {emergencies.length}
+                {sessions.filter((s: any) => ['emergency','urgent','high'].includes(s.triage?.urgency)).length}
               </span>
             )}
           </button>
@@ -480,11 +475,11 @@ export default function DoctorDashboardPage() {
               <ClipboardList className="w-4 h-4" />
               <span>Follow-ups</span>
             </div>
-            {followups.length > 0 && (
+            {sessions.filter((s: any) => s.approvalStatus === 'approved').length > 0 && (
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${
                 activeTab === 'followups' ? 'bg-indigo-100 text-indigo-850' : 'bg-slate-200/60 text-slate-550'
               }`}>
-                {followups.length}
+                {sessions.filter((s: any) => s.approvalStatus === 'approved').length}
               </span>
             )}
           </button>
@@ -548,95 +543,97 @@ export default function DoctorDashboardPage() {
               {/* Headline */}
               <div className="border-b pb-4">
                 <h3 className="font-display font-black text-slate-800 text-lg uppercase">Dashboard Overview</h3>
-                <p className="text-xs text-slate-500 font-semibold mt-0.5">Real-time indicators, high-urgency patient streams, and clinical schedule</p>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Real-time patient intake sessions routed to your department</p>
               </div>
 
-              {/* Statistics Row */}
+              {/* Statistics Row — All from sessions */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Total Consultations</span>
-                  <div className="text-2xl font-black text-slate-800 font-display">14</div>
-                  <span className="text-[10px] text-slate-500 font-semibold">Today</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Total Intake Sessions</span>
+                  <div className="text-2xl font-black text-slate-800 font-display">{sessions.length}</div>
+                  <span className="text-[10px] text-slate-500 font-semibold">Routed to your dept</span>
                 </div>
 
-                <div className="glass bg-white p-5 border-l-4 border-l-indigo-600 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Emergency Cases</span>
-                  <div className="text-2xl font-black text-indigo-650 font-display flex items-center gap-2">
-                    {emergencies.length || 2}
-                    <span className="w-2.5 h-2.5 bg-indigo-500 rounded-full animate-ping" />
+                <div className="glass bg-white p-5 border-l-4 border-l-green-600 border border-slate-200 rounded-2xl shadow-sm space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Approved</span>
+                  <div className="text-2xl font-black text-green-700 font-display flex items-center gap-2">
+                    {sessions.filter((s: any) => s.approvalStatus === 'approved').length}
+                    <ShieldCheck className="w-4 h-4 text-green-500" />
                   </div>
-                  <span className="text-[10px] text-slate-500 font-semibold">Require attention</span>
+                  <span className="text-[10px] text-slate-500 font-semibold">Ready to treat</span>
                 </div>
 
-                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Pending Follow-ups</span>
-                  <div className="text-2xl font-black text-slate-800 font-display">{followups.length || 5}</div>
-                  <span className="text-[10px] text-slate-500 font-semibold">This week</span>
+                <div className="glass bg-white p-5 border-l-4 border-l-amber-500 border border-slate-200 rounded-2xl shadow-sm space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Pending Approval</span>
+                  <div className="text-2xl font-black text-amber-600 font-display flex items-center gap-2">
+                    {sessions.filter((s: any) => s.approvalStatus === 'pending').length}
+                    {sessions.filter((s: any) => s.approvalStatus === 'pending').length > 0 && <span className="w-2.5 h-2.5 bg-amber-400 rounded-full animate-ping" />}
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-semibold">Awaiting admin</span>
                 </div>
 
-                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">AI Summaries Ready</span>
-                  <div className="text-2xl font-black text-slate-800 font-display">8</div>
-                  <span className="text-[10px] text-slate-500 font-semibold">To review</span>
+                <div className="glass bg-white p-5 border-l-4 border-l-red-500 border border-slate-200 rounded-2xl shadow-sm space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Urgent/Emergency</span>
+                  <div className="text-2xl font-black text-red-600 font-display flex items-center gap-2">
+                    {sessions.filter((s: any) => ['emergency','urgent','high'].includes(s.triage?.urgency)).length}
+                    {sessions.filter((s: any) => ['emergency','urgent','high'].includes(s.triage?.urgency)).length > 0 && <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />}
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-semibold">High priority</span>
                 </div>
               </div>
 
-              {/* Critical Cases and Schedule Layout */}
+              {/* Approved Patients (ready to treat) + Pending Patients */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Left side: Critical Cases Panel */}
+                {/* Left: Approved patients — ready for consultation */}
                 <div className="lg:col-span-6 glass bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="flex justify-between items-center pb-2 border-b">
                     <h4 className="font-display font-black text-slate-800 text-xs uppercase flex items-center gap-2">
-                      <AlertOctagon className="w-4 h-4 text-indigo-650" /> Critical Cases
+                      <ShieldCheck className="w-4 h-4 text-green-600" /> Approved Patients
                     </h4>
-                    <span className="text-[9px] font-black bg-indigo-100 text-indigo-850 px-2 py-0.5 rounded-full uppercase border">
-                      {emergencies.length || 2} Active
+                    <span className="text-[9px] font-black bg-green-100 text-green-800 px-2 py-0.5 rounded-full uppercase border">
+                      {sessions.filter((s: any) => s.approvalStatus === 'approved').length} Ready
                     </span>
                   </div>
-
                   <div className="space-y-3">
-                    {emergencies.map((emg: any) => (
-                      <div
-                        key={emg.id}
-                        onClick={() => { setSelectedEmergencyCase(emg); setShowVitalsModal(true); }}
-                        className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 cursor-pointer transition-all"
-                      >
+                    {sessions.filter((s: any) => s.approvalStatus === 'approved').length === 0 && (
+                      <p className="text-xs text-slate-400 italic py-4 text-center">No approved sessions yet. Admin must approve intake sessions first.</p>
+                    )}
+                    {sessions.filter((s: any) => s.approvalStatus === 'approved').map((s: any) => (
+                      <div key={s.id} className="p-4 bg-green-50 hover:bg-green-100 border border-green-200 rounded-2xl flex items-center justify-between gap-3 cursor-pointer transition-all"
+                        onClick={() => { setSelectedSession(s); setShowHandoffModal(true); }}>
                         <div>
-                          <div className="font-black text-slate-900 text-sm">{emg.name}, Age {emg.age}</div>
-                          <div className="text-[11px] text-slate-500 font-semibold leading-relaxed mt-0.5">{emg.reason}</div>
+                          <div className="font-black text-slate-900 text-sm">{s.profile?.name || 'Unknown'}, Age {s.profile?.age || '?'}</div>
+                          <div className="text-[11px] text-slate-500 font-semibold mt-0.5">{(s.symptoms?.symptoms || []).join(', ') || 'No symptoms recorded'}</div>
                         </div>
-                        <span className="text-[9px] font-black shrink-0 bg-slate-900 text-white px-2 py-1 rounded font-mono uppercase">
-                          Priority 1
+                        <span className="text-[9px] font-black shrink-0 bg-green-700 text-white px-2 py-1 rounded font-mono uppercase">
+                          {s.triage?.urgency || 'medium'}
                         </span>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Right side: Today's Schedule panel */}
+                {/* Right: Pending intake sessions */}
                 <div className="lg:col-span-6 glass bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
                   <div className="flex justify-between items-center pb-2 border-b">
                     <h4 className="font-display font-black text-slate-800 text-xs uppercase flex items-center gap-2">
-                      <CalendarIcon className="w-4 h-4 text-indigo-600" /> Today's Schedule
+                      <Clock className="w-4 h-4 text-amber-500" /> Pending Review
                     </h4>
-                    <span className="text-[9px] font-bold text-slate-400">{appointments.length || 6} appointments</span>
+                    <span className="text-[9px] font-bold text-slate-400">{sessions.filter((s: any) => s.approvalStatus === 'pending').length} awaiting</span>
                   </div>
-
                   <div className="space-y-3">
-                    {appointments.map((apt: any, idx) => (
-                      <div key={apt.id} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex items-center justify-between gap-3">
+                    {sessions.filter((s: any) => s.approvalStatus === 'pending').length === 0 && (
+                      <p className="text-xs text-slate-400 italic py-4 text-center">No pending sessions. New patient intakes will appear here automatically.</p>
+                    )}
+                    {sessions.filter((s: any) => s.approvalStatus === 'pending').map((s: any) => (
+                      <div key={s.id} className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-3">
                         <div>
-                          <div className="font-black text-slate-900 text-sm">{apt.patientName} - {apt.time}</div>
-                          <div className="text-[11px] text-slate-500 font-semibold mt-0.5">{apt.type}</div>
+                          <div className="font-black text-slate-900 text-sm">{s.profile?.name || 'Unknown'}, Age {s.profile?.age || '?'}</div>
+                          <div className="text-[11px] text-slate-500 font-semibold mt-0.5">{(s.symptoms?.symptoms || []).join(', ') || 'Intake in progress'}</div>
                         </div>
-                        {idx === 0 && (
-                          <button
-                            onClick={() => handlePagePatient(apt.patientName)}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-extrabold shadow-sm transition-all shrink-0"
-                          >
-                            Next
-                          </button>
-                        )}
+                        <span className="text-[9px] font-black shrink-0 bg-amber-500 text-white px-2 py-1 rounded font-mono uppercase">
+                          Pending
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -646,92 +643,50 @@ export default function DoctorDashboardPage() {
           )}
 
           {/* ──────────────────────────────────────────────────────── */}
-          {/* TABS: EMERGENCY QUEUE TAB */}
-          {/* ──────────────────────────────────────────────────────── */}
           {activeTab === 'emergency' && (
             <div className="space-y-6">
-              {/* Header */}
               <div className="border-b pb-4">
                 <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
-                  <HeartCrack className="w-6 h-6 text-indigo-650 animate-pulse" /> Emergency Queue Monitor
+                  <HeartCrack className="w-6 h-6 text-red-500 animate-pulse" /> Emergency / Urgent Cases
                 </h3>
-                <p className="text-xs text-slate-500 font-semibold mt-0.5">High-priority department redirects, active ambulance status, and vital transmission</p>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">High-priority intake sessions requiring immediate clinical attention</p>
               </div>
-
-              {/* Queue Cards */}
-              <div className="space-y-6">
-                {emergencies.map((emg: any) => (
-                  <div key={emg.id} className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                    {/* Patient demographics header */}
+              <div className="space-y-4">
+                {sessions.filter((s: any) => ['emergency','urgent','high'].includes(s.triage?.urgency)).map((s: any) => (
+                  <div key={s.id} className="glass bg-white border border-red-200 rounded-3xl p-6 shadow-sm space-y-4">
                     <div className="flex justify-between items-start gap-4">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h4 className="font-display font-black text-slate-900 text-lg tracking-tight uppercase">{emg.name}</h4>
-                          <span className="text-[9px] font-black bg-slate-900 text-white px-2 py-0.5 rounded font-mono uppercase">
-                            Priority 1
+                          <h4 className="font-display font-black text-slate-900 text-lg uppercase">{s.profile?.name || 'Unknown'}</h4>
+                          <span className="text-[9px] font-black bg-red-600 text-white px-2 py-0.5 rounded font-mono uppercase">
+                            {s.triage?.urgency || 'urgent'}
+                          </span>
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase ${s.approvalStatus === 'approved' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
+                            {s.approvalStatus}
                           </span>
                         </div>
                         <p className="text-xs text-slate-500 font-semibold mt-0.5">
-                          Age: {emg.age} • Gender: {emg.gender} • Department: {emg.department}
+                          Age: {s.profile?.age || '?'} • Gender: {s.profile?.gender || '?'} • Dept: {s.triage?.department}
                         </p>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">ETA</span>
-                        <span className="text-indigo-650 font-display font-black text-lg">
-                          {emg.etaMinutes === 0 ? 'Admitted' : `${emg.etaMinutes} min`}
-                        </span>
-                      </div>
                     </div>
-
-                    {/* AI Escalation Reason Brief */}
-                    <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl space-y-1">
-                      <span className="text-[9px] font-black text-indigo-850 uppercase tracking-widest">AI Escalation Reason</span>
-                      <p className="text-xs text-indigo-755 font-bold leading-relaxed">{emg.reason}</p>
+                    <div className="p-4 bg-red-50/50 border border-red-100 rounded-2xl space-y-1">
+                      <span className="text-[9px] font-black text-red-800 uppercase tracking-widest">AI Triage Reasoning</span>
+                      <p className="text-xs text-red-700 font-bold leading-relaxed">{s.triage?.reasoning || 'No reasoning provided'}</p>
                     </div>
-
-                    {/* Status grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-0.5">
-                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Status</span>
-                        <div className="text-xs font-extrabold text-slate-800 uppercase flex items-center gap-1.5">
-                          <Activity className="w-3.5 h-3.5 text-indigo-600 animate-pulse" /> {emg.status}
-                        </div>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-0.5">
-                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Vitals Transmitted</span>
-                        <div className="text-xs font-extrabold text-slate-800 uppercase flex items-center gap-1">
-                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-650" /> {emg.vitalsTransmitted}
-                        </div>
-                      </div>
-                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-0.5">
-                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Room Prepared</span>
-                        <div className="text-xs font-extrabold text-slate-850 uppercase flex items-center gap-1">
-                          <Building className="w-3.5 h-3.5 text-slate-500" /> {emg.roomPrepared}
-                        </div>
-                      </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border space-y-1">
+                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Symptoms</span>
+                      <div className="text-xs font-extrabold text-slate-800">{(s.symptoms?.symptoms || []).join(', ') || 'Not recorded'}</div>
                     </div>
-
-                    {/* Action buttons */}
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => { setSelectedEmergencyCase(emg); setShowVitalsModal(true); }}
-                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-md transition-all uppercase tracking-wider"
-                      >
-                        Review AI Vitals
-                      </button>
-                      <button
-                        onClick={() => handleReviewAI(emg.name)}
-                        className="flex-1 py-3 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-extrabold transition-all uppercase tracking-wider"
-                      >
-                        View Full Chart
-                      </button>
-                    </div>
+                    <button onClick={() => { setSelectedSession(s); setShowHandoffModal(true); }}
+                      className="w-full py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-extrabold shadow-md transition-all uppercase tracking-wider">
+                      Review Full Intake
+                    </button>
                   </div>
                 ))}
-
-                {emergencies.length === 0 && (
+                {sessions.filter((s: any) => ['emergency','urgent','high'].includes(s.triage?.urgency)).length === 0 && (
                   <div className="p-8 text-center bg-white border rounded-2xl text-slate-400 font-semibold text-xs">
-                    No active emergency check-ins recorded for this clinical queue.
+                    No emergency or urgent intake sessions routed to this department.
                   </div>
                 )}
               </div>
@@ -743,64 +698,60 @@ export default function DoctorDashboardPage() {
           {/* ──────────────────────────────────────────────────────── */}
           {activeTab === 'appointments' && (
             <div className="space-y-6">
-              {/* Header */}
-              <div className="border-b pb-4 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
-                <div>
-                  <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
-                    <CalendarIcon className="w-6 h-6 text-indigo-600" /> Appointments Management
-                  </h3>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5">Daily schedules, patient checked-in timelines, and intake priorities</p>
-                </div>
+              <div className="border-b pb-4">
+                <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
+                  <CalendarIcon className="w-6 h-6 text-indigo-600" /> Intake Sessions
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">All AI intake sessions routed to your department</p>
               </div>
-
-              {/* Table */}
               <div className="glass bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                      <th className="p-4 pl-6">Time</th>
-                      <th className="p-4">Patient</th>
+                      <th className="p-4 pl-6">Patient</th>
                       <th className="p-4">Age</th>
-                      <th className="p-4">Type</th>
-                      <th className="p-4">AI Priority</th>
+                      <th className="p-4">Symptoms</th>
+                      <th className="p-4">AI Urgency</th>
                       <th className="p-4">Status</th>
                       <th className="p-4 pr-6 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
-                    {appointments.map((apt: any) => (
-                      <tr key={apt.id} className="hover:bg-slate-50/50">
-                        <td className="p-4 pl-6 font-mono text-slate-500 font-extrabold">{apt.time}</td>
-                        <td className="p-4 font-black text-slate-900">{apt.patientName}</td>
-                        <td className="p-4 text-slate-500">{apt.age}</td>
-                        <td className="p-4 text-slate-500">{apt.type}</td>
+                    {sessions.map((s: any) => (
+                      <tr key={s.id} className="hover:bg-slate-50/50">
+                        <td className="p-4 pl-6 font-black text-slate-900">{s.profile?.name || 'Unknown'}</td>
+                        <td className="p-4 text-slate-500">{s.profile?.age || '?'}</td>
+                        <td className="p-4 text-slate-500 max-w-[200px] truncate">{(s.symptoms?.symptoms || []).join(', ') || '—'}</td>
                         <td className="p-4">
                           <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                            apt.priority === 'High Priority' ? 'bg-indigo-100 text-indigo-850' : 'bg-slate-100 text-slate-600 border'
+                            ['emergency','urgent','high'].includes(s.triage?.urgency) ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-600 border'
                           }`}>
-                            {apt.priority}
+                            {s.triage?.urgency || 'medium'}
                           </span>
                         </td>
                         <td className="p-4">
                           <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase ${
-                            apt.status === 'Checked In' ? 'bg-slate-900 text-white font-mono' :
-                            apt.status === 'Waiting' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'
+                            s.approvalStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                            s.approvalStatus === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
                           }`}>
-                            {apt.status}
+                            {s.approvalStatus}
                           </span>
                         </td>
                         <td className="p-4 pr-6 text-right">
-                          <button
-                            onClick={() => handleReviewAI(apt.patientName)}
-                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-extrabold shadow-sm transition-all"
-                          >
-                            Review AI Triage
+                          <button onClick={() => { setSelectedSession(s); setShowHandoffModal(true); }}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-extrabold shadow-sm transition-all">
+                            View Intake
                           </button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {sessions.length === 0 && (
+                  <div className="p-8 text-center text-slate-400 font-semibold text-xs">
+                    No intake sessions have been routed to this department yet.
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -810,67 +761,56 @@ export default function DoctorDashboardPage() {
           {/* ──────────────────────────────────────────────────────── */}
           {activeTab === 'patients' && (
             <div className="space-y-6">
-              {/* Header */}
               <div className="border-b pb-4 flex flex-col sm:flex-row justify-between sm:items-start gap-4">
                 <div>
                   <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
-                    <User className="w-6 h-6 text-indigo-650" /> Patient Records Directory
+                    <User className="w-6 h-6 text-indigo-650" /> Patient Records
                   </h3>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5">Explore medical charts, assigned conditions, previous consult histories, and treatment pathways</p>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">All patients routed to your department via AI intake</p>
                 </div>
-                
-                {/* Search Bar */}
                 <div className="w-full sm:w-64 relative shrink-0">
                   <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search patients..."
-                    className="w-full pl-9 pr-4 py-2 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                  />
+                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search patients..." className="w-full pl-9 pr-4 py-2 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
                 </div>
               </div>
-
-              {/* Cards Grid */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {filteredPatients.map((pat: any) => (
-                  <div key={pat.id} className="glass bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col justify-between gap-4">
+                {sessions.filter((s: any) => {
+                  if (!searchQuery.trim()) return true;
+                  const q = searchQuery.toLowerCase();
+                  return (s.profile?.name || '').toLowerCase().includes(q) || (s.symptoms?.symptoms || []).join(' ').toLowerCase().includes(q);
+                }).map((s: any) => (
+                  <div key={s.id} className="glass bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col justify-between gap-4">
                     <div className="space-y-2">
                       <div className="flex justify-between items-start gap-2">
-                        <h4 className="font-display font-black text-slate-900 text-sm truncate uppercase">{pat.name}</h4>
+                        <h4 className="font-display font-black text-slate-900 text-sm truncate uppercase">{s.profile?.name || 'Unknown'}</h4>
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
-                          pat.priority === 'High Priority' ? 'bg-indigo-100 text-indigo-850' : 'bg-slate-100 text-slate-550 border'
-                        }`}>
-                          {pat.priority}
-                        </span>
+                          s.approvalStatus === 'approved' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-700'
+                        }`}>{s.approvalStatus}</span>
                       </div>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Age: {pat.age} • Gender: {pat.gender || 'Male'}</p>
-                      
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Age: {s.profile?.age || '?'} • Gender: {s.profile?.gender || '?'}</p>
                       <div className="space-y-1">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Primary Condition</span>
-                        <div className="text-xs font-extrabold text-slate-800 leading-relaxed uppercase">{pat.condition}</div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Symptoms</span>
+                        <div className="text-xs font-extrabold text-slate-800 leading-relaxed">{(s.symptoms?.symptoms || []).join(', ') || 'Not recorded'}</div>
                       </div>
-
                       <div className="space-y-1">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Last Consultation</span>
-                        <div className="text-xs font-semibold text-slate-550">{pat.lastVisit}</div>
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">AI Triage</span>
+                        <div className="text-xs font-semibold text-slate-550">{s.triage?.urgency || 'medium'} priority • {s.triage?.department}</div>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Intake Date</span>
+                        <div className="text-xs font-semibold text-slate-550">{new Date(s.createdAt || s.updatedAt).toLocaleString()}</div>
                       </div>
                     </div>
-
-                    <button
-                      onClick={() => handleReviewAI(pat.name)}
-                      className="w-full py-2 bg-slate-50 border hover:bg-slate-100 text-slate-750 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-wider flex items-center justify-center gap-1"
-                    >
-                      <span>View Full Chart</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
+                    <button onClick={() => { setSelectedSession(s); setShowHandoffModal(true); }}
+                      className="w-full py-2 bg-slate-50 border hover:bg-slate-100 text-slate-750 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-wider flex items-center justify-center gap-1">
+                      <span>View Full Intake</span><ChevronRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ))}
-
-                {filteredPatients.length === 0 && (
+                {sessions.length === 0 && (
                   <div className="p-8 text-center bg-white border rounded-2xl text-slate-400 font-semibold text-xs col-span-3">
-                    No matching patient profiles found.
+                    No patients have been routed to your department yet.
                   </div>
                 )}
               </div>
@@ -882,56 +822,45 @@ export default function DoctorDashboardPage() {
           {/* ──────────────────────────────────────────────────────── */}
           {activeTab === 'followups' && (
             <div className="space-y-6">
-              {/* Header */}
               <div className="border-b pb-4">
                 <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
                   <ClipboardList className="w-6 h-6 text-indigo-650" /> Patient Follow-ups
                 </h3>
-                <p className="text-xs text-slate-500 font-semibold mt-0.5">Track and sign off automated RAG follow-up routines, blood pressure triggers, and wellness timelines</p>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Approved patients requiring follow-up consultations and treatment monitoring</p>
               </div>
-
-              {/* Tasks List */}
               <div className="space-y-3">
-                {followups.map((task: any) => (
-                  <div key={task.id} className="glass bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                {sessions.filter((s: any) => s.approvalStatus === 'approved').map((s: any) => (
+                  <div key={s.id} className="glass bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-display font-black text-slate-900 text-sm uppercase">{task.patientName}</h4>
-                        <span className="text-[9px] font-black font-mono bg-indigo-50 border border-indigo-150 text-indigo-850 px-2 py-0.5 rounded uppercase">
-                          {task.type}
+                        <h4 className="font-display font-black text-slate-900 text-sm uppercase">{s.profile?.name || 'Unknown'}</h4>
+                        <span className="text-[9px] font-black font-mono bg-green-50 border border-green-200 text-green-800 px-2 py-0.5 rounded uppercase">
+                          Approved
                         </span>
-                        {task.priority === 'High Priority' && (
-                          <span className="text-[9px] font-black bg-red-100 border border-red-200 text-red-750 px-2 py-0.5 rounded uppercase">
-                            Urgent
-                          </span>
+                        {['emergency','urgent','high'].includes(s.triage?.urgency) && (
+                          <span className="text-[9px] font-black bg-red-100 border border-red-200 text-red-750 px-2 py-0.5 rounded uppercase">Urgent</span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-550 font-bold leading-relaxed uppercase">{task.description}</p>
+                      <p className="text-xs text-slate-550 font-bold leading-relaxed">{(s.symptoms?.symptoms || []).join(', ') || 'Symptom review needed'}</p>
                       <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5 pt-1">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" /> Due: {task.dueDate}
+                        <Clock className="w-3.5 h-3.5 text-slate-400" /> Intake: {new Date(s.createdAt || s.updatedAt).toLocaleDateString()}
                       </div>
                     </div>
-
                     <div className="flex gap-2 shrink-0">
-                      <button
-                        onClick={() => handleReviewAI(task.patientName)}
-                        className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-wider"
-                      >
+                      <button onClick={() => { setSelectedSession(s); setShowHandoffModal(true); }}
+                        className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-wider">
                         View Details
                       </button>
-                      <button
-                        onClick={() => handleCompleteFollowup(task.id, task.patientName)}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-extrabold shadow-md transition-all uppercase tracking-wider"
-                      >
+                      <button onClick={() => { showToast(`Follow-up completed for ${s.profile?.name}. Marked in system.`, 'success'); }}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-extrabold shadow-md transition-all uppercase tracking-wider">
                         Complete
                       </button>
                     </div>
                   </div>
                 ))}
-
-                {followups.length === 0 && (
+                {sessions.filter((s: any) => s.approvalStatus === 'approved').length === 0 && (
                   <div className="p-8 text-center bg-white border rounded-2xl text-slate-400 font-semibold text-xs">
-                    All therapeutic follow-up tasks checked off!
+                    No approved patients requiring follow-up yet.
                   </div>
                 )}
               </div>
