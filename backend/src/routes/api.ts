@@ -90,6 +90,23 @@ apiRouter.post('/sessions', async (_req, res) => {
   }
 });
 
+apiRouter.get('/sessions/by-department', (req, res) => {
+  const dept = (req.query.dept as string) || 'General Medicine';
+  const sessions = dbGetSessionsByDepartment(dept);
+  const formatted = sessions.map(s => ({
+    id: s.id,
+    phase: s.phase,
+    profile: JSON.parse(s.profile_json || '{}'),
+    symptoms: JSON.parse(s.symptoms_json || '{}'),
+    triage: JSON.parse(s.triage_json || '{}'),
+    clinicianHandoff: JSON.parse(s.clinician_handoff_json || '{}'),
+    approvalStatus: s.approval_status,
+    createdAt: s.created_at,
+    updatedAt: s.updated_at,
+  }));
+  res.json(formatted);
+});
+
 apiRouter.get('/sessions/:id', async (req, res) => {
   const session = await getSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -303,22 +320,7 @@ apiRouter.get('/clinical/stats', (_req, res) => {
   res.json(getClinicalStats());
 });
 
-apiRouter.get('/sessions/by-department', (req, res) => {
-  const dept = (req.query.dept as string) || 'General Medicine';
-  const sessions = dbGetSessionsByDepartment(dept);
-  const formatted = sessions.map(s => ({
-    id: s.id,
-    phase: s.phase,
-    profile: JSON.parse(s.profile_json || '{}'),
-    symptoms: JSON.parse(s.symptoms_json || '{}'),
-    triage: JSON.parse(s.triage_json || '{}'),
-    clinicianHandoff: JSON.parse(s.clinician_handoff_json || '{}'),
-    approvalStatus: s.approval_status,
-    createdAt: s.created_at,
-    updatedAt: s.updated_at,
-  }));
-  res.json(formatted);
-});
+
 
 // ═══════════════════════════════════════════════════════════════
 // NEW ENDPOINTS: Patient accounts, session history, approvals
