@@ -34,6 +34,26 @@ export interface DoctorInfo {
   hospitalLocation: string;
 }
 
+export interface PatientAccount {
+  id: string;
+  name: string;
+  phone: string;
+  age: number | null;
+  gender: string | null;
+  existing_conditions: string;
+  medications: string;
+  allergies: string;
+  created_at: string;
+}
+
+export interface DbStats {
+  patients: number;
+  doctors: number;
+  sessions: number;
+  departments: number;
+  dbPath: string;
+}
+
 export const api = {
   health: () => request<{ status: string; demoMode: boolean }>('/health'),
 
@@ -99,4 +119,71 @@ export const api = {
     }),
   searchGuidelines: (q: string) =>
     request<any[]>(`/guidelines/search?q=${encodeURIComponent(q)}`),
+  getDepartments: () =>
+    request<string[]>('/departments'),
+  addDepartment: (name: string) =>
+    request<{ success: boolean; departments?: string[]; error?: string }>('/departments', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    }),
+  changeAdminPassword: (newPassword: string) =>
+    request<{ success: boolean; error?: string }>('/admin/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    }),
+  getDoctorsWithCredentials: () =>
+    request<any[]>('/admin/doctors-credentials'),
+  getClinicalAppointments: (dept: string) =>
+    request<any[]>(`/clinical/appointments?dept=${encodeURIComponent(dept)}`),
+  getClinicalEmergencies: (dept: string) =>
+    request<any[]>(`/clinical/emergencies?dept=${encodeURIComponent(dept)}`),
+  getClinicalPatients: (dept: string) =>
+    request<any[]>(`/clinical/patients?dept=${encodeURIComponent(dept)}`),
+  getClinicalFollowUps: (dept: string) =>
+    request<any[]>(`/clinical/followups?dept=${encodeURIComponent(dept)}`),
+
+  // ═══════════════════════════════════════════════════════
+  // NEW: Patient accounts, session saving, approvals
+  // ═══════════════════════════════════════════════════════
+
+  // Patient registration & login (name + phone)
+  patientRegister: (data: { name: string; phone: string; age?: number; gender?: string }) =>
+    request<{ success: boolean; patient?: PatientAccount; message?: string; error?: string }>('/patient/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  patientLogin: (name: string, phone: string) =>
+    request<{ success: boolean; patient?: PatientAccount; error?: string }>('/patient/login', {
+      method: 'POST',
+      body: JSON.stringify({ name, phone }),
+    }),
+
+  // Patient visit history
+  getPatientHistory: (patientId: string) =>
+    request<any[]>(`/patient/${patientId}/history`),
+
+  // Link session to patient account (save conversation)
+  saveSessionToPatient: (sessionId: string, patientId: string) =>
+    request<{ success: boolean }>(`/sessions/${sessionId}/save-to-patient`, {
+      method: 'POST',
+      body: JSON.stringify({ patientId }),
+    }),
+
+  // Admin approval workflow
+  approveSession: (sessionId: string, status: 'approved' | 'rejected') =>
+    request<{ success: boolean }>(`/sessions/${sessionId}/approve`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
+  // Doctor change password
+  changeDoctorPassword: (doctorId: string, currentPassword: string, newPassword: string) =>
+    request<{ success: boolean; error?: string }>('/doctor/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ doctorId, currentPassword, newPassword }),
+    }),
+
+  // Database stats
+  getDbStats: () => request<DbStats>('/db/stats'),
 };

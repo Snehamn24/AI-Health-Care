@@ -1,9 +1,10 @@
 import { Routes, Route, NavLink } from 'react-router-dom';
-import { Activity, BarChart3, MessageCircle, Stethoscope } from 'lucide-react';
+import { BarChart3, MessageCircle, Stethoscope, Home, User } from 'lucide-react';
+import HomePortalPage from './pages/HomePortalPage';
 import IntakePage from './pages/IntakePage';
 import DashboardPage from './pages/DashboardPage';
-import ArchitecturePage from './pages/ArchitecturePage';
 import DoctorDashboardPage from './pages/DoctorDashboardPage';
+import PatientPortalPage from './pages/PatientPortalPage';
 
 function App() {
   return (
@@ -28,6 +29,17 @@ function App() {
                 }`
               }
             >
+              <Home className="w-4 h-4" />
+              Home Portal
+            </NavLink>
+            <NavLink
+              to="/intake"
+              className={({ isActive }) =>
+                `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                  isActive ? 'bg-care-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                }`
+              }
+            >
               <MessageCircle className="w-4 h-4" />
               Intake
             </NavLink>
@@ -40,7 +52,7 @@ function App() {
               }
             >
               <BarChart3 className="w-4 h-4" />
-              Analytics
+              Admin Dashboard
             </NavLink>
             <NavLink
               to="/doctor-portal"
@@ -54,15 +66,15 @@ function App() {
               Doctor Portal
             </NavLink>
             <NavLink
-              to="/architecture"
+              to="/patient-portal"
               className={({ isActive }) =>
                 `flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
                   isActive ? 'bg-care-600 text-white' : 'text-slate-600 hover:bg-slate-100'
                 }`
               }
             >
-              <Activity className="w-4 h-4" />
-              Architecture
+              <User className="w-4 h-4" />
+              Patient Portal
             </NavLink>
           </nav>
         </div>
@@ -70,10 +82,11 @@ function App() {
 
       <main className="flex-1">
         <Routes>
-          <Route path="/" element={<IntakePage />} />
+          <Route path="/" element={<HomePortalPage />} />
+          <Route path="/intake" element={<IntakePage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/architecture" element={<ArchitecturePage />} />
           <Route path="/doctor-portal" element={<DoctorDashboardPage />} />
+          <Route path="/patient-portal" element={<PatientPortalPage />} />
         </Routes>
       </main>
 

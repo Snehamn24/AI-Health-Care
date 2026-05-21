@@ -2,6 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
 import { apiRouter } from './routes/api.js';
+import { seedDatabase } from './services/seed-dataset.js';
+
+// Seed the SQLite database with medical dataset on first run
+seedDatabase();
 
 const app = express();
 

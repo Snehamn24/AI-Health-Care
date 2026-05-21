@@ -6,7 +6,20 @@ import { getAnalyticsSummary } from '../services/bigquery.js';
 import { speechToText, textToSpeechAudio } from '../services/speech.js';
 import { seedClinicalGuidelines } from '../services/pinecone.js';
 import { config } from '../config.js';
-import { getDoctors, validateCredentials, registerDoctor } from '../services/doctors.js';
+import { getDoctors, validateCredentials, registerDoctor, getDepartments, addDepartment, changeAdminPassword, getDoctorsWithCredentials, changeDoctorPassword } from '../services/doctors.js';
+import {
+  getEmergencyQueueByDepartment,
+  getAppointmentsByDepartment,
+  getPatientCardsByDepartment,
+  getFollowUpsByDepartment,
+  getClinicalStats,
+} from '../services/clinical-records.js';
+import {
+  dbGetPatientByPhone, dbInsertPatient, dbGetPatientById,
+  dbGetSessionsByPatient, dbUpdateSessionApproval, dbLinkSessionToPatient,
+  dbGetStats, getAdminSetting
+} from '../services/database.js';
+import { v4 as uuidv4 } from 'uuid';
 import type { Department } from '../types/index.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -211,7 +224,7 @@ apiRouter.get('/workflow/explain/:sessionId', async (req, res) => {
       { step: 7, name: 'Hybrid Triage', status: session.triage ? 'complete' : 'pending', detail: session.triage },
       { step: 8, name: 'Department Routing', status: session.triage ? 'complete' : 'pending', detail: session.triage?.department },
       { step: 9, name: 'Clinician Handoff', status: session.clinicianHandoff ? 'complete' : 'pending' },
-      { step: 10, name: 'Firestore + BigQuery', status: session.phase === 'complete' ? 'complete' : 'pending' },
+      { step: 10, name: 'SQLite Persistence', status: session.phase === 'complete' ? 'complete' : 'pending' },
     ],
     session: {
       phase: session.phase,
@@ -220,4 +233,221 @@ apiRouter.get('/workflow/explain/:sessionId', async (req, res) => {
       handoff: session.clinicianHandoff,
     },
   });
+});
+
+// ─── Dynamic Departments ───
+
+apiRouter.get('/departments', (_req, res) => {
+  res.json(getDepartments());
+});
+
+apiRouter.post('/departments', (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name?.trim()) {
+      return res.status(400).json({ success: false, error: 'Department name is required' });
+    }
+    const success = addDepartment(name.trim());
+    if (!success) {
+      return res.status(400).json({ success: false, error: 'Department already exists or invalid name' });
+    }
+    res.status(201).json({ success: true, departments: getDepartments() });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+apiRouter.post('/admin/change-password', (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword?.trim()) {
+      return res.status(400).json({ success: false, error: 'New password is required' });
+    }
+    const success = changeAdminPassword(newPassword);
+    if (!success) {
+      return res.status(500).json({ success: false, error: 'Failed to update password' });
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+// ─── Dynamic Clinical Workstation Data ───
+
+apiRouter.get('/admin/doctors-credentials', (_req, res) => {
+  res.json(getDoctorsWithCredentials());
+});
+
+apiRouter.get('/clinical/appointments', (req, res) => {
+  const dept = (req.query.dept as string) || 'Cardiology';
+  res.json(getAppointmentsByDepartment(dept));
+});
+
+apiRouter.get('/clinical/emergencies', (req, res) => {
+  const dept = (req.query.dept as string) || 'Cardiology';
+  res.json(getEmergencyQueueByDepartment(dept));
+});
+
+apiRouter.get('/clinical/patients', (req, res) => {
+  const dept = (req.query.dept as string) || 'Cardiology';
+  res.json(getPatientCardsByDepartment(dept));
+});
+
+apiRouter.get('/clinical/followups', (req, res) => {
+  const dept = (req.query.dept as string) || 'Cardiology';
+  res.json(getFollowUpsByDepartment(dept));
+});
+
+apiRouter.get('/clinical/stats', (_req, res) => {
+  res.json(getClinicalStats());
+});
+
+// ═══════════════════════════════════════════════════════════════
+// NEW ENDPOINTS: Patient accounts, session history, approvals
+// ═══════════════════════════════════════════════════════════════
+
+// ─── Patient Registration & Login ───
+
+apiRouter.post('/patient/register', (req, res) => {
+  try {
+    const { name, phone, age, gender, existingConditions, medications, allergies } = req.body;
+    if (!name?.trim() || !phone?.trim()) {
+      return res.status(400).json({ success: false, error: 'Name and phone number are required' });
+    }
+
+    // Check if patient already exists
+    const existing = dbGetPatientByPhone(phone.trim());
+    if (existing) {
+      return res.json({ success: true, patient: existing, message: 'Welcome back! Account found.' });
+    }
+
+    const id = uuidv4();
+    const inserted = dbInsertPatient({
+      id,
+      name: name.trim(),
+      phone: phone.trim(),
+      age: age || null,
+      gender: gender || null,
+      existing_conditions: JSON.stringify(existingConditions || []),
+      medications: JSON.stringify(medications || []),
+      allergies: JSON.stringify(allergies || []),
+    });
+
+    if (!inserted) {
+      return res.status(500).json({ success: false, error: 'Failed to create patient account' });
+    }
+
+    const patient = dbGetPatientById(id);
+    res.status(201).json({ success: true, patient, message: 'Account created successfully!' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+apiRouter.post('/patient/login', (req, res) => {
+  try {
+    const { name, phone } = req.body;
+    if (!name?.trim() || !phone?.trim()) {
+      return res.status(400).json({ success: false, error: 'Name and phone number are required' });
+    }
+
+    const patient = dbGetPatientByPhone(phone.trim());
+    if (!patient) {
+      return res.status(404).json({ success: false, error: 'No account found with this phone number. Please register first.' });
+    }
+
+    // Verify name matches (case-insensitive)
+    if (patient.name.toLowerCase() !== name.trim().toLowerCase()) {
+      return res.status(401).json({ success: false, error: 'Name does not match the registered account.' });
+    }
+
+    res.json({ success: true, patient });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+// ─── Patient History ───
+
+apiRouter.get('/patient/:id/history', (req, res) => {
+  try {
+    const sessions = dbGetSessionsByPatient(req.params.id);
+    // Convert DB rows to frontend-friendly format
+    const history = sessions.map(s => ({
+      id: s.id,
+      phase: s.phase,
+      profile: JSON.parse(s.profile_json || '{}'),
+      symptoms: JSON.parse(s.symptoms_json || '{"symptoms":[]}'),
+      messages: JSON.parse(s.messages_json || '[]'),
+      triage: s.triage_json ? JSON.parse(s.triage_json) : null,
+      clinicianHandoff: s.clinician_handoff_json ? JSON.parse(s.clinician_handoff_json) : null,
+      doctorSuggestion: s.doctor_suggestion_json ? JSON.parse(s.doctor_suggestion_json) : null,
+      approvalStatus: s.approval_status,
+      createdAt: s.created_at,
+      updatedAt: s.updated_at,
+    }));
+    res.json(history);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// ─── Link Session to Patient (save conversation) ───
+
+apiRouter.post('/sessions/:id/save-to-patient', (req, res) => {
+  try {
+    const { patientId } = req.body;
+    if (!patientId) {
+      return res.status(400).json({ success: false, error: 'Patient ID is required' });
+    }
+    const linked = dbLinkSessionToPatient(req.params.id, patientId);
+    res.json({ success: linked });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+// ─── Session Approval (Admin) ───
+
+apiRouter.patch('/sessions/:id/approve', (req, res) => {
+  try {
+    const { status } = req.body; // 'approved' or 'rejected'
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'Status must be "approved" or "rejected"' });
+    }
+    const updated = dbUpdateSessionApproval(req.params.id, status);
+    res.json({ success: updated });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+// ─── Doctor Change Password ───
+
+apiRouter.post('/doctor/change-password', (req, res) => {
+  try {
+    const { doctorId, currentPassword, newPassword } = req.body;
+    if (!doctorId || !currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'All fields are required' });
+    }
+    const result = changeDoctorPassword(doctorId, currentPassword, newPassword);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+// ─── Database Stats (for admin overview) ───
+
+apiRouter.get('/db/stats', (_req, res) => {
+  try {
+    const stats = dbGetStats();
+    res.json(stats);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
 });

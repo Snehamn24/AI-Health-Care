@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Send, Volume2, VolumeX } from 'lucide-react';
+import { Send, Volume2, VolumeX, Save, X, User, Phone } from 'lucide-react';
 import { api } from '../api/client';
 import type { IntakeSession } from '../types';
 import { ChatPanel } from '../components/ChatPanel';
 import { VoiceInput } from '../components/VoiceInput';
 import { TriagePanel } from '../components/TriagePanel';
-import { WorkflowPanel } from '../components/WorkflowPanel';
 
 const QUICK_PROMPTS = [
   "My name is Sarah Chen, I'm 45 years old, female",
@@ -22,13 +21,30 @@ export default function IntakePage() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [demoMode, setDemoMode] = useState(true);
 
+  // Save conversation state
+  const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [saveForm, setSaveForm] = useState({ name: '', phone: '' });
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [savedAlready, setSavedAlready] = useState(false);
+
   useEffect(() => {
     api.health().then((h) => setDemoMode(h.demoMode));
     initSession();
   }, []);
 
+  // Show save prompt when intake completes
+  useEffect(() => {
+    if (session?.phase === 'complete' && !savedAlready && !showSavePrompt) {
+      const timer = setTimeout(() => setShowSavePrompt(true), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [session?.phase, savedAlready, showSavePrompt]);
+
   const initSession = async () => {
     setLoading(true);
+    setSavedAlready(false);
+    setShowSavePrompt(false);
+    setSaveStatus(null);
     try {
       const s = await api.createSession();
       setSession(s);
@@ -84,6 +100,29 @@ export default function IntakePage() {
       return manual || '';
     }
     return transcript;
+  };
+
+  const handleSaveConversation = async () => {
+    if (!session || !saveForm.name.trim() || !saveForm.phone.trim()) {
+      setSaveStatus('Please enter both name and phone number.');
+      return;
+    }
+    try {
+      const regResult = await api.patientRegister({
+        name: saveForm.name.trim(),
+        phone: saveForm.phone.trim(),
+      });
+      if (regResult.success && regResult.patient) {
+        await api.saveSessionToPatient(session.id, regResult.patient.id);
+        setSaveStatus(`✅ Conversation saved! ${regResult.message || 'View your visit history from the Patient Portal.'}`);
+        setSavedAlready(true);
+        setTimeout(() => setShowSavePrompt(false), 3000);
+      } else {
+        setSaveStatus(regResult.error || 'Failed to save.');
+      }
+    } catch (err) {
+      setSaveStatus((err as Error).message);
+    }
   };
 
   return (
@@ -162,11 +201,77 @@ export default function IntakePage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-0 min-h-0">
+        <div className="min-h-0 h-full">
           <TriagePanel session={session} />
-          <WorkflowPanel sessionId={session?.id ?? null} />
         </div>
       </div>
+
+      {/* ─── Save Conversation Modal ─── */}
+      {showSavePrompt && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 space-y-4 relative">
+            <button
+              onClick={() => { setShowSavePrompt(false); setSavedAlready(true); }}
+              className="absolute top-4 right-4 p-1 text-slate-400 hover:text-slate-700 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <Save className="w-10 h-10 text-indigo-600 mx-auto" />
+              <h3 className="text-lg font-black text-slate-800">Save Your Visit Record?</h3>
+              <p className="text-xs text-slate-500">
+                Register with your name and phone number to save this consultation.
+                You can view your visit history anytime from the <strong>Patient Portal</strong>.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 border rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-500">
+                <User className="w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={saveForm.name}
+                  onChange={(e) => setSaveForm({ ...saveForm, name: e.target.value })}
+                  placeholder="Your full name"
+                  className="flex-1 text-sm outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2 border rounded-xl px-3 py-2 focus-within:ring-2 focus-within:ring-indigo-500">
+                <Phone className="w-4 h-4 text-slate-400" />
+                <input
+                  type="tel"
+                  value={saveForm.phone}
+                  onChange={(e) => setSaveForm({ ...saveForm, phone: e.target.value })}
+                  placeholder="Phone number"
+                  className="flex-1 text-sm outline-none"
+                />
+              </div>
+            </div>
+
+            {saveStatus && (
+              <p className={`text-xs font-semibold text-center ${saveStatus.startsWith('✅') ? 'text-emerald-600' : 'text-red-600'}`}>
+                {saveStatus}
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowSavePrompt(false); setSavedAlready(true); }}
+                className="flex-1 py-2.5 border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50"
+              >
+                Skip
+              </button>
+              <button
+                onClick={handleSaveConversation}
+                className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 shadow"
+              >
+                Save My Visit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

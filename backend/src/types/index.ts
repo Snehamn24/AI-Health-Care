@@ -1,13 +1,4 @@
-export type Department =
-  | 'General Medicine'
-  | 'Cardiology'
-  | 'Neurology'
-  | 'Orthopedics'
-  | 'Pulmonology'
-  | 'Dermatology'
-  | 'ENT'
-  | 'Psychiatry'
-  | 'Emergency Care';
+export type Department = string;
 
 export type UrgencyLevel = 'emergency' | 'urgent' | 'high' | 'medium' | 'low';
 

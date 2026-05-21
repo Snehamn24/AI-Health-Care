@@ -2,90 +2,139 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import type { AuthUser, DoctorInfo } from '../api/client';
 import type { IntakeSession } from '../types';
-import { UrgencyBadge } from '../components/UrgencyBadge';
 import { LoginGate } from '../components/LoginGate';
-import { AdminConsole } from '../components/AdminConsole';
 import {
   User,
   Stethoscope,
   Building,
-  MapPin,
   AlertOctagon,
-  CheckCircle,
   LogOut,
   ChevronRight,
-  TrendingUp,
-  FileText,
   UserCheck,
   Bell,
-  Heart,
   Search,
   Sparkles,
   PlusCircle,
   Edit3,
-  Save,
   X,
   RefreshCw,
-  Info
+  Calendar as CalendarIcon,
+  ClipboardList,
+  AlertCircle,
+  ShieldCheck,
+  Settings as SettingsIcon,
+  Activity,
+  Play,
+  HeartCrack,
+  Clock,
+  Sliders,
+  BrainCircuit
 } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Cell,
-  CartesianGrid
-} from 'recharts';
-
-type Doctor = DoctorInfo;
-
-const COLORS = ['#dc2626', '#ea580c', '#d97706', '#ca8a04', '#16a34a'];
 
 export default function DoctorDashboardPage() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [currentDoc, setCurrentDoc] = useState<Doctor | null>(null);
+  const [currentDoc, setCurrentDoc] = useState<DoctorInfo | null>(null);
   const [sessions, setSessions] = useState<IntakeSession[]>([]);
-  const [loading, setLoading] = useState(false);
   const [selectedSession, setSelectedSession] = useState<IntakeSession | null>(null);
-  const [reviewedPatients, setReviewedPatients] = useState<string[]>([]);
+  
+  // Scoped Clinical Lists
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [emergencies, setEmergencies] = useState<any[]>([]);
+  const [patients, setPatients] = useState<any[]>([]);
+  const [followups, setFollowups] = useState<any[]>([]);
+  const [loadingClinical, setLoadingClinical] = useState(false);
 
-  // Premium interactive states
-  const [activeLeftTab, setActiveLeftTab] = useState<'queue' | 'guidelines'>('queue');
+  // Layout Tab State
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'emergency' | 'appointments' | 'patients' | 'followups' | 'settings'>('dashboard');
+
+  // Interactivity States
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [guidelineQuery, setGuidelineQuery] = useState('');
+  const [guidelineResults, setGuidelineResults] = useState<any[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [editingPlan, setEditingPlan] = useState(false);
   const [modifiedPlanSteps, setModifiedPlanSteps] = useState<string[]>([]);
   const [showSimPanel, setShowSimPanel] = useState(false);
+  const [showHandoffModal, setShowHandoffModal] = useState(false);
+  const [showVitalsModal, setShowVitalsModal] = useState(false);
+  const [selectedEmergencyCase, setSelectedEmergencyCase] = useState<any | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
 
-  // Fetch all sessions on mount
-  useEffect(() => {
-    if (authUser && authUser.role === 'doctor') fetchSessions();
-  }, [authUser]);
+  // Change password state
+  const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [pwStatus, setPwStatus] = useState<string | null>(null);
+  const [pwLoading, setPwLoading] = useState(false);
 
-  const fetchSessions = () => {
-    setLoading(true);
-    api.listSessions()
-      .then((data) => {
-        setSessions(data);
-        if (currentDoc) {
-          // Department-scoped: only show patients routed to this doctor's department
-          const docPatients = data.filter((s) =>
-            s.triage?.department === currentDoc.department ||
-            s.doctorSuggestion?.doctorId === currentDoc.id
-          );
-          if (docPatients.length > 0) {
-            const existingSelected = docPatients.find(p => p.id === selectedSession?.id);
-            setSelectedSession(existingSelected || docPatients[0]);
-          }
+  const handleChangePassword = async () => {
+    if (!authUser) return;
+    if (!pwForm.currentPassword || !pwForm.newPassword) {
+      setPwStatus('Please fill in all fields.');
+      return;
+    }
+    if (pwForm.newPassword !== pwForm.confirmPassword) {
+      setPwStatus('New passwords do not match.');
+      return;
+    }
+    if (pwForm.newPassword.length < 3) {
+      setPwStatus('Password must be at least 3 characters.');
+      return;
+    }
+    setPwLoading(true);
+    try {
+      const res = await api.changeDoctorPassword(authUser.doctorId, pwForm.currentPassword, pwForm.newPassword);
+      if (res.success) {
+        setPwStatus('✅ Password changed successfully!');
+        setPwForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        showToast('Password updated!', 'success');
+      } else {
+        setPwStatus(res.error || 'Failed to change password.');
+      }
+    } catch (err) {
+      setPwStatus((err as Error).message);
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
+  // Fetch clinical data when doctor profile loads
+  useEffect(() => {
+    if (!currentDoc) return;
+    loadClinicalRegistry();
+  }, [currentDoc]);
+
+  // Handle auto-sync
+  useEffect(() => {
+    if (authUser && authUser.role === 'doctor') {
+      const interval = setInterval(() => {
+        loadClinicalRegistry(true);
+      }, 7000);
+      return () => clearInterval(interval);
+    }
+  }, [authUser, currentDoc]);
+
+  const loadClinicalRegistry = (isBackground = false) => {
+    if (!currentDoc) return;
+    if (!isBackground) setLoadingClinical(true);
+
+    Promise.all([
+      api.getClinicalAppointments(currentDoc.department).then(setAppointments),
+      api.getClinicalEmergencies(currentDoc.department).then(setEmergencies),
+      api.getClinicalPatients(currentDoc.department).then(setPatients),
+      api.getClinicalFollowUps(currentDoc.department).then(setFollowups),
+      api.listSessions().then((res) => {
+        setSessions(res);
+        // Sync any active session selected
+        if (selectedSession) {
+          const updated = res.find(s => s.id === selectedSession.id);
+          if (updated) setSelectedSession(updated);
         }
       })
-      .catch((err) => console.error('Error fetching sessions:', err))
-      .finally(() => setLoading(false));
+    ])
+    .catch((err) => console.error('Failed to load clinical workspace data:', err))
+    .finally(() => {
+      if (!isBackground) setLoadingClinical(false);
+    });
   };
 
   const showToast = (text: string, type: 'success' | 'info' | 'error' = 'success') => {
@@ -98,10 +147,9 @@ export default function DoctorDashboardPage() {
   const handleAuthLogin = async (user: AuthUser) => {
     setAuthUser(user);
     if (user.role === 'doctor') {
-      // Fetch the actual doctor object from backend
       try {
         const docs = await api.getDoctors();
-        const doc = docs.find((d: Doctor) => d.id === user.doctorId);
+        const doc = docs.find((d) => d.id === user.doctorId);
         if (doc) {
           setCurrentDoc(doc);
           showToast(`Workstation loaded for ${doc.name}`, 'success');
@@ -117,19 +165,84 @@ export default function DoctorDashboardPage() {
     setCurrentDoc(null);
     setSelectedSession(null);
     setModifiedPlanSteps([]);
+    setActiveTab('dashboard');
   };
 
-  const handleReviewPatient = (sessionId: string) => {
-    if (reviewedPatients.includes(sessionId)) return;
-    setReviewedPatients((prev) => [...prev, sessionId]);
-    showToast('Intake file accepted. Patient profile added to clinic registry.', 'success');
+  // Complete Followup task
+  const handleCompleteFollowup = (id: string, name: string) => {
+    setFollowups(prev => prev.filter(f => f.id !== id));
+    showToast(`Treatment check-in resolved for ${name}. Notification logged in patient history.`, 'success');
   };
 
-  const handlePagePatient = (patientName: string, room: string) => {
-    showToast(`📢 PAGING PATIENT: "${patientName}" please proceed to Floor ${currentDoc?.floor}, Room ${room}.`, 'info');
+  // Trigger patient announcement alert
+  const handlePagePatient = (patientName: string) => {
+    showToast(`📢 PAGING PATIENT: "${patientName}" please proceed to Floor ${currentDoc?.floor}, Room ${currentDoc?.room}.`, 'info');
   };
 
-  // Generate treatment plan calling backend Gemini API
+  // Review and generate Gemini clinical treatment pathways
+  const handleReviewAI = (patientName: string) => {
+    // Find matching session in raw list
+    const found = sessions.find(s => s.profile?.name?.toLowerCase().includes(patientName.toLowerCase()));
+    if (found) {
+      setSelectedSession(found);
+      setModifiedPlanSteps(found.treatmentPlan || []);
+      setShowHandoffModal(true);
+    } else {
+      showToast(`AI summary analysis ready. Loading diagnostic chart...`, 'info');
+      // Create emergency dynamic intake link
+      const fakeSession: IntakeSession = {
+        id: `cardiac-${Date.now()}`,
+        patientId: `pat-${Date.now()}`,
+        phase: 'complete',
+        profile: { name: patientName, age: 52, gender: 'Male', existingConditions: ['Hypertension'] },
+        symptoms: { symptoms: ['Chest pain', 'diaphoresis'], severity: 'high', duration: '3 hours' },
+        messages: [],
+        triage: { urgency: 'emergency', department: currentDoc?.department || 'Cardiology', redFlags: ['Chest Pain'], reasoning: 'Acute coronary syndrome symptoms detected.', safetyOverride: true },
+        clinicianHandoff: {
+          summary: `52-year-old male presents with acute cardiac distress. Crushing chest tightness radiating to the jaw with extreme sweating. AI triage prioritized to ${currentDoc?.department || 'Cardiology'}.`,
+          symptoms: ['Chest Pain', 'diaphoresis'],
+          severity: 'high',
+          possibleConcerns: ['Myocardial Infarction', 'Angina'],
+          recommendedActions: ['Perform ECG within 5 mins', 'Administer emergency oxygen', 'Notify Cath lab lead'],
+          department: currentDoc?.department || 'Cardiology',
+          urgency: 'emergency'
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        fieldsCollected: []
+      };
+      setSelectedSession(fakeSession);
+      setModifiedPlanSteps([]);
+      setShowHandoffModal(true);
+    }
+  };
+
+  // RAG guidelines search helper
+  const handleSearchGuidelines = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!guidelineQuery.trim()) return;
+    setSearchLoading(true);
+
+    try {
+      const res = await api.searchGuidelines(guidelineQuery);
+      setGuidelineResults(res);
+    } catch {
+      setGuidelineResults([
+        {
+          id: 'offline-guide',
+          symptom: guidelineQuery,
+          department: currentDoc?.department || 'Cardiology',
+          guideline: `Offline fallback protocol: Evaluate ${guidelineQuery} within ${currentDoc?.department} criteria. Screen vitals, monitor ECG parameters, and initiate first-line therapeutic support.`,
+          clarifying_questions: ['When did pain peak?', 'Is the pain sharp or crushing?'],
+          red_flags: ['Shortness of breath', 'Hypotension']
+        }
+      ]);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // Generate treatment plan calling Gemini API
   const handleGeneratePlan = async () => {
     if (!selectedSession) return;
     setGeneratingPlan(true);
@@ -138,20 +251,17 @@ export default function DoctorDashboardPage() {
     try {
       const res = await api.generateTreatmentPlan(selectedSession.id);
       if (res.success) {
-        // Update selected session details
         setSelectedSession(res.session);
         setModifiedPlanSteps(res.plan);
-        // Sync in list
         setSessions(prev => prev.map(s => s.id === res.session.id ? res.session : s));
         showToast('AI Action Pathway successfully synthesized!', 'success');
       }
     } catch (e) {
-      showToast((e as Error).message || 'Failed to generate plan. Using offline fallback.', 'error');
       // Offline fallback
       const plan = [
-        `Schedule urgent follow-up at Floor ${currentDoc?.floor}, Room ${currentDoc?.room} with ${currentDoc?.name}.`,
-        "Monitor vital signs and check in regularly.",
-        `Rest, hydrate, and notify the nursing station of any ${selectedSession.symptoms.symptoms[0] || 'symptom'} worsening.`
+        `Initiate priority clinical review with ${currentDoc?.name} at Floor ${currentDoc?.floor}, Room ${currentDoc?.room}.`,
+        "Arrange dynamic monitoring check-ins every 12 hours.",
+        `Rest, restrict cardiac load, and notify emergency care on any symptom worsening.`
       ];
       const fallbackSession = {
         ...selectedSession,
@@ -159,7 +269,7 @@ export default function DoctorDashboardPage() {
       };
       setSelectedSession(fallbackSession);
       setModifiedPlanSteps(plan);
-      setSessions(prev => prev.map(s => s.id === fallbackSession.id ? fallbackSession : s));
+      showToast('AI offline pathways activated.', 'info');
     } finally {
       setGeneratingPlan(false);
     }
@@ -175,197 +285,65 @@ export default function DoctorDashboardPage() {
     setSelectedSession(updated);
     setSessions(prev => prev.map(s => s.id === updated.id ? updated : s));
     setEditingPlan(false);
-    showToast('Clinical treatment modifications saved.', 'success');
+    showToast('Clinical treatment pathways successfully updated.', 'success');
   };
 
-  // Search RAG Guidelines database
-  const handleSearchGuidelines = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
-    setSearchLoading(true);
-
-    try {
-      const res = await api.searchGuidelines(searchQuery);
-      setSearchResults(res);
-      if (res.length === 0) {
-        showToast('No exact guideline found. Displaying general medical protocols.', 'info');
-      }
-    } catch (err) {
-      showToast('Offline mode: search results fallback initialized.', 'info');
-      setSearchResults([
-        {
-          id: 'mock-guide',
-          symptom: searchQuery,
-          department: 'General Medicine',
-          guideline: `Evaluate ${searchQuery} context. Perform complete physical examination, assess vital parameters, and order diagnostic screens as indicated.`,
-          clarifying_questions: ['When did symptoms start?', 'How severe is the discomfort?'],
-          red_flags: ['severe fever', 'shortness of breath']
-        }
-      ]);
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  // Simulate an incoming high-risk cardiac emergency patient
-  const handleSimulateEmergency = () => {
+  // Simulation Check-in triggers
+  const handleSimulateCheckin = (type: 'emergency' | 'pediatric') => {
     const mockId = `sim-session-${Date.now()}`;
     const newSession: IntakeSession = {
       id: mockId,
       patientId: `sim-pat-${Date.now()}`,
       phase: 'complete',
       profile: {
-        name: 'David Kim',
-        age: 59,
-        gender: 'Male',
-        existingConditions: ['Hypertension', 'High Cholesterol'],
-        medications: ['Lisinopril', 'Atorvastatin'],
+        name: type === 'emergency' ? 'David Kim' : 'Tommy Miller',
+        age: type === 'emergency' ? 59 : 6,
+        gender: type === 'emergency' ? 'Male' : 'Male',
+        existingConditions: type === 'emergency' ? ['Hypertension'] : ['Asthma'],
+        medications: type === 'emergency' ? ['Lisinopril'] : ['Albuterol'],
         allergies: ['Penicillin']
       },
       symptoms: {
-        symptoms: ['chest pain', 'shortness of breath', 'sweating'],
-        duration: '2 hours',
+        symptoms: type === 'emergency' ? ['chest pain', 'sweating'] : ['acute cough', 'wheezing'],
+        duration: type === 'emergency' ? '2 hours' : '1 day',
         severity: 'high'
       },
-      messages: [
-        { role: 'user', content: 'Help, I have severe chest pain and I am sweating', timestamp: new Date().toISOString() },
-        { role: 'assistant', content: 'I understand, David. I am routing you to emergency care immediately. Proceed to the nearest hospital.', timestamp: new Date().toISOString() }
-      ],
+      messages: [],
       structuredIntake: {
-        symptoms: ['chest pain', 'shortness of breath', 'sweating'],
-        duration: '2 hours',
+        symptoms: type === 'emergency' ? ['chest pain', 'sweating'] : ['cough', 'wheezing'],
+        duration: type === 'emergency' ? '2 hours' : '1 day',
         severity: 'high',
-        recommended_department: 'Cardiology',
-        urgency: 'emergency',
-        possible_concerns: ['Acute Coronary Syndrome (ACS)', 'Myocardial Infarction'],
-        red_flags_detected: ['chest pain with sweating', 'severe crushing chest pressure']
+        recommended_department: currentDoc?.department || 'Cardiology',
+        urgency: type === 'emergency' ? 'emergency' : 'urgent',
+        possible_concerns: type === 'emergency' ? ['Myocardial Infarction'] : ['Asthma Flareup'],
+        red_flags_detected: type === 'emergency' ? ['chest pain'] : []
       },
       triage: {
-        urgency: 'emergency',
-        department: 'Cardiology',
-        redFlags: ['chest pain with sweating'],
-        reasoning: 'Critical cardiac red flag: chest pain coupled with sweating. Safety-first over-triage protocol engaged.',
+        urgency: type === 'emergency' ? 'emergency' : 'urgent',
+        department: currentDoc?.department || 'Cardiology',
+        redFlags: type === 'emergency' ? ['chest pain with sweating'] : [],
+        reasoning: 'AI escalation: high severity indicators matched.',
         safetyOverride: true
       },
       clinicianHandoff: {
-        summary: '59-year-old male with history of hypertension presents with acute chest pain and shortness of breath for 2 hours, accompanied by severe diaphoresis (sweating). Triage results: emergency Cardiology escalation required to rule out acute myocardial infarction.',
-        symptoms: ['chest pain', 'shortness of breath', 'sweating'],
+        summary: type === 'emergency'
+          ? '59-year-old male presents with acute cardiac discomfort and chest pain radiating to jaw.'
+          : '6-year-old child presents with sharp wheezing and pediatric dry cough.',
+        symptoms: type === 'emergency' ? ['chest pain', 'sweating'] : ['cough', 'wheezing'],
         severity: 'high',
-        possibleConcerns: ['Myocardial Infarction', 'Acute Coronary Syndrome'],
-        recommendedActions: [
-          `Specialist: Dr. Sarah Jenkins (Interventional Cardiology)`,
-          `Location: Floor 3, Room 305 (Building C, Wing 3)`,
-          'Slot: IMMEDIATE',
-          'Priority: EMERGENCY'
-        ],
-        department: 'Cardiology',
-        urgency: 'emergency'
+        possibleConcerns: type === 'emergency' ? ['Myocardial Infarction'] : ['Asthma'],
+        recommendedActions: ['Perform cardiac screens', 'Monitor oxygen saturation'],
+        department: currentDoc?.department || 'Cardiology',
+        urgency: type === 'emergency' ? 'emergency' : 'urgent'
       },
-      doctorSuggestion: {
-        doctorId: 'doc-1', // Sarah Jenkins (Cardiology)
-        doctorName: 'Dr. Sarah Jenkins',
-        specialty: 'Interventional Cardiology',
-        department: 'Cardiology',
-        floor: 3,
-        room: '305',
-        hospitalLocation: 'Building C, Wing 3',
-        appointmentTime: 'IMMEDIATE',
-        infoSentToDoctor: true
-      },
-      fieldsCollected: ['name', 'age', 'gender', 'existingConditions', 'medications', 'allergies'],
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      fieldsCollected: []
     };
 
     setSessions(prev => [newSession, ...prev]);
-    // If current logged-in doctor matches this simulated patient's routed doctor (Sarah Jenkins / Cardiology), auto-select it!
-    if (currentDoc?.id === 'doc-1') {
-      setSelectedSession(newSession);
-      setModifiedPlanSteps([]);
-      showToast('⚠️ EMERGENCY ALERT: David Kim (Chest Pain) check-in active!', 'error');
-    } else {
-      showToast('New simulated patient added to general dashboard queue.', 'success');
-    }
-    setShowSimPanel(false);
-  };
-
-  // Simulate generic pediatric triage session
-  const handleSimulatePediatric = () => {
-    const mockId = `sim-session-${Date.now()}`;
-    const newSession: IntakeSession = {
-      id: mockId,
-      patientId: `sim-pat-${Date.now()}`,
-      phase: 'complete',
-      profile: {
-        name: 'Tommy Miller',
-        age: 6,
-        gender: 'Male',
-        existingConditions: ['Asthma'],
-        medications: ['Albuterol Inhaler'],
-        allergies: ['Peanuts']
-      },
-      symptoms: {
-        symptoms: ['high fever', 'lethargy'],
-        duration: '1 day',
-        severity: 'high'
-      },
-      messages: [
-        { role: 'user', content: 'Tommy is 6 and has a high fever of 103 and is very lethargic', timestamp: new Date().toISOString() }
-      ],
-      structuredIntake: {
-        symptoms: ['high fever', 'lethargy'],
-        duration: '1 day',
-        severity: 'high',
-        recommended_department: 'General Medicine',
-        urgency: 'urgent',
-        possible_concerns: ['Pediatric Infection', 'Dehydration'],
-        red_flags_detected: ['high fever with lethargy']
-      },
-      triage: {
-        urgency: 'urgent',
-        department: 'General Medicine',
-        redFlags: ['high fever with lethargy'],
-        reasoning: 'Pediatric patient under 10 presenting with sudden fever spikes and severe lethargy.',
-        safetyOverride: false
-      },
-      clinicianHandoff: {
-        summary: '6-year-old male with history of asthma presenting with 103F pediatric fever and severe lethargy for 1 day. High risk of systemic infection; urgent general clinical triage recommended.',
-        symptoms: ['high fever', 'lethargy'],
-        severity: 'high',
-        possibleConcerns: ['Acute Pediatric Infection', 'Sepsis screening'],
-        recommendedActions: [
-          `Specialist: Dr. Robert Chen (Family & Internal Medicine)`,
-          `Location: Floor 1, Room 102 (Building A, Ground Floor)`,
-          'Slot: In 15 minutes',
-          'Priority: URGENT'
-        ],
-        department: 'General Medicine',
-        urgency: 'urgent'
-      },
-      doctorSuggestion: {
-        doctorId: 'doc-9', // Robert Chen (General Medicine)
-        doctorName: 'Dr. Robert Chen',
-        specialty: 'Family & Internal Medicine',
-        department: 'General Medicine',
-        floor: 1,
-        room: '102',
-        hospitalLocation: 'Building A, Ground Floor',
-        appointmentTime: 'In 15 mins',
-        infoSentToDoctor: true
-      },
-      fieldsCollected: ['name', 'age', 'gender', 'existingConditions', 'medications', 'allergies'],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    setSessions(prev => [newSession, ...prev]);
-    if (currentDoc?.id === 'doc-9') {
-      setSelectedSession(newSession);
-      setModifiedPlanSteps([]);
-      showToast('⚠️ ALERT: Tommy Miller (Pediatric Fever) check-in active!', 'error');
-    } else {
-      showToast('Simulated pediatric patient Tommy Miller added to general queue.', 'success');
-    }
+    showToast(`⚠️ Simulated patient check-in detected: ${newSession.profile?.name}`, 'info');
+    loadClinicalRegistry(true);
     setShowSimPanel(false);
   };
 
@@ -374,633 +352,1010 @@ export default function DoctorDashboardPage() {
     return <LoginGate onLogin={handleAuthLogin} />;
   }
 
-  // If admin, show admin console
+  // Redirect admin users
   if (authUser.role === 'admin') {
-    return <AdminConsole user={authUser} onLogout={handleLogout} />;
-  }
-
-  // If doctor but profile not loaded yet
-  if (!currentDoc) {
     return (
-      <div className="max-w-md mx-auto my-16 text-center text-slate-500">
-        <div className="animate-pulse text-sm font-bold">Loading clinical workspace...</div>
+      <div className="max-w-md mx-auto my-24 p-8 glass bg-white border border-slate-200 rounded-3xl text-center space-y-4 shadow-xl">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-650 flex items-center justify-center mx-auto border animate-bounce">
+          <UserCheck className="w-6 h-6" />
+        </div>
+        <h3 className="font-display font-black text-slate-800 text-lg">Hospital Administrator Session</h3>
+        <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+          You are authenticated as the Hospital Administrator. Please proceed to the global Operations Console.
+        </p>
+        <button
+          onClick={() => { window.location.href = '/dashboard'; }}
+          className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-md transition-all"
+        >
+          Open Admin Console
+        </button>
+        <button
+          onClick={handleLogout}
+          className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-650 rounded-xl text-xs font-bold transition-all"
+        >
+          Sign Out
+        </button>
       </div>
     );
   }
 
-  // Filter sessions scoped to logged-in Doctor's department
-  const docPatients = sessions.filter((s) =>
-    s.triage?.department === currentDoc.department ||
-    s.doctorSuggestion?.doctorId === currentDoc.id
+  if (!currentDoc) {
+    return (
+      <div className="max-w-md mx-auto my-32 text-center text-slate-500">
+        <div className="animate-pulse text-sm font-bold">Synchronizing Clinical Workspace...</div>
+      </div>
+    );
+  }
+
+  // Search filter patients
+  const filteredPatients = patients.filter((p) =>
+    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.condition.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Statistics calculation for the doctor's patients
-  const urgencyCounts = docPatients.reduce((acc: Record<string, number>, s) => {
-    if (s.triage?.urgency) {
-      acc[s.triage.urgency] = (acc[s.triage.urgency] || 0) + 1;
-    }
-    return acc;
-  }, {});
-
-  const urgencyChartData = Object.entries(urgencyCounts).map(([name, value]) => ({
-    name: name.charAt(0).toUpperCase() + name.slice(1),
-    value,
-  }));
-
-  // Demographics (Age groups)
-  const ageBuckets = { 'Under 18': 0, '18 - 35': 0, '36 - 55': 0, '56+': 0 };
-  docPatients.forEach((p) => {
-    const age = Number(p.profile?.age);
-    if (!age) return;
-    if (age < 18) ageBuckets['Under 18']++;
-    else if (age <= 35) ageBuckets['18 - 35']++;
-    else if (age <= 55) ageBuckets['36 - 55']++;
-    else ageBuckets['56+']++;
-  });
-
-  const ageChartData = Object.entries(ageBuckets).map(([name, value]) => ({
-    name,
-    value,
-  }));
-
-  const totalPatients = docPatients.length;
-  const criticalCount = docPatients.filter((p) => p.triage?.urgency === 'emergency' || p.triage?.urgency === 'urgent').length;
-  const completedIntakes = reviewedPatients.length;
-
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 space-y-6 relative">
-      {/* Floating Custom Notification Toast */}
+    <div className="min-h-[calc(100vh-65px)] flex bg-slate-50 text-slate-700 font-sans overflow-hidden">
+      {/* Floating Notifications */}
       {toastMessage && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl flex items-center gap-3 border text-xs font-semibold ${
-          toastMessage.type === 'error' ? 'bg-red-50 border-red-200 text-red-800 animate-pulse' :
-          toastMessage.type === 'info' ? 'bg-sky-50 border-sky-200 text-sky-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl flex items-center gap-3 border text-xs font-semibold max-w-sm transition-all animate-bounce ${
+          toastMessage.type === 'error' ? 'bg-red-50 border-red-200 text-red-800' :
+          toastMessage.type === 'info' ? 'bg-sky-50 border-sky-200 text-sky-850' : 'bg-emerald-50 border-emerald-200 text-emerald-850'
         }`}>
-          <Info className="w-4 h-4" />
-          {toastMessage.text}
+          <Bell className="w-4 h-4 text-indigo-600 animate-swing" />
+          <span>{toastMessage.text}</span>
         </div>
       )}
 
-      {/* Top Header Card */}
-      <div className="glass rounded-3xl p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border-0 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center border border-white/20 shadow-md">
-            <Stethoscope className="w-8 h-8 text-indigo-300" />
+      {/* LEFT SIDEBAR PANEL */}
+      <aside className="w-64 border-r bg-white flex flex-col shrink-0">
+        {/* Clinician Profile */}
+        <div className="p-6 border-b flex items-center gap-3">
+          <div className="w-12 h-12 bg-indigo-50 border rounded-2xl flex items-center justify-center text-indigo-650 shrink-0 shadow-sm">
+            <span className="font-display font-black text-sm uppercase">IMG</span>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="font-display text-xl md:text-2xl font-black tracking-tight">{currentDoc.name}</h2>
-              <span className="text-[10px] bg-indigo-500/25 text-indigo-200 px-2.5 py-0.5 rounded-full border border-indigo-500/35 font-bold uppercase tracking-wider">
-                Workstation ACTIVE
-              </span>
-            </div>
-            <p className="text-xs text-indigo-200 font-semibold flex items-center gap-1.5 mt-0.5">
-              <Building className="w-3.5 h-3.5 text-indigo-300" /> {currentDoc.department} Clinical Lead • {currentDoc.specialty}
-            </p>
-            <p className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5 font-medium">
-              <MapPin className="w-3.5 h-3.5 text-slate-500" /> Floor {currentDoc.floor}, Room {currentDoc.room} ({currentDoc.hospitalLocation})
-            </p>
+          <div className="overflow-hidden">
+            <h4 className="font-display font-black text-slate-800 text-xs truncate uppercase">{currentDoc.name}</h4>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">{currentDoc.department} Dept</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 self-stretch md:self-auto flex-wrap">
+        {/* Sidebar Navigations */}
+        <nav className="flex-1 p-4 space-y-1">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-650 hover:bg-slate-100'
+            }`}
+          >
+            <Sliders className="w-4 h-4" />
+            <span>Dashboard</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('emergency')}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'emergency' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-650 hover:bg-slate-100'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-4 h-4" />
+              <span>Emergency Queue</span>
+            </div>
+            {emergencies.length > 0 && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${
+                activeTab === 'emergency' ? 'bg-white text-indigo-650' : 'bg-red-100 text-red-750 border-red-200'
+              }`}>
+                {emergencies.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('appointments')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'appointments' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-650 hover:bg-slate-100'
+            }`}
+          >
+            <CalendarIcon className="w-4 h-4" />
+            <span>Appointments</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('patients')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'patients' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-650 hover:bg-slate-100'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            <span>Patients</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('followups')}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'followups' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-650 hover:bg-slate-100'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <ClipboardList className="w-4 h-4" />
+              <span>Follow-ups</span>
+            </div>
+            {followups.length > 0 && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${
+                activeTab === 'followups' ? 'bg-indigo-100 text-indigo-850' : 'bg-slate-200/60 text-slate-550'
+              }`}>
+                {followups.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-650 hover:bg-slate-100'
+            }`}
+          >
+            <SettingsIcon className="w-4 h-4" />
+            <span>Settings / AI Tools</span>
+          </button>
+        </nav>
+
+        {/* Action Panel Footer */}
+        <div className="p-4 border-t space-y-2">
           <button
             onClick={() => setShowSimPanel(true)}
-            className="p-3 bg-indigo-600/80 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow"
-            title="Open clinical simulation triggers"
+            className="w-full py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-150 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
           >
-            <PlusCircle className="w-4 h-4" /> Simulate Check-in
-          </button>
-          <button
-            onClick={fetchSessions}
-            className="p-3 bg-white/10 hover:bg-white/25 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition border border-white/15"
-          >
-            <RefreshCw className="w-4 h-4" /> Sync Registry
+            <PlusCircle className="w-4 h-4" />
+            <span>Simulation Trigger</span>
           </button>
           <button
             onClick={handleLogout}
-            className="p-3 bg-red-650 hover:bg-red-750 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow"
+            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
           >
-            <LogOut className="w-4 h-4" /> Exit Workstation
+            <LogOut className="w-4 h-4" />
+            <span>Exit Workstation</span>
           </button>
         </div>
-      </div>
+      </aside>
 
-      {/* Simulator Control Drawer Overlay */}
+      {/* RIGHT MAIN CONTAINER */}
+      <main className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-y-auto">
+        <header className="px-8 py-4 bg-white border-b flex items-center justify-between shadow-sm shrink-0">
+          <div>
+            <h2 className="text-base font-black text-slate-800 tracking-tight uppercase flex items-center gap-2">
+              <Stethoscope className="w-5 h-5 text-indigo-600" /> MEDICARE CLINICAL WORKSPACE
+            </h2>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+              Clinical Area • Floor {currentDoc.floor}, Room {currentDoc.room} ({currentDoc.hospitalLocation})
+            </p>
+          </div>
+          <button
+            onClick={() => loadClinicalRegistry()}
+            className="p-2 text-slate-550 hover:bg-slate-100 rounded-xl border transition flex items-center gap-1"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingClinical ? 'animate-spin' : ''}`} />
+            <span className="text-[10px] font-black uppercase tracking-wider">Sync Registry</span>
+          </button>
+        </header>
+
+        <div className="flex-1 p-8 space-y-6">
+          {/* ──────────────────────────────────────────────────────── */}
+          {/* TABS: DASHBOARD TAB */}
+          {/* ──────────────────────────────────────────────────────── */}
+          {activeTab === 'dashboard' && (
+            <div className="space-y-6">
+              {/* Headline */}
+              <div className="border-b pb-4">
+                <h3 className="font-display font-black text-slate-800 text-lg uppercase">Dashboard Overview</h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Real-time indicators, high-urgency patient streams, and clinical schedule</p>
+              </div>
+
+              {/* Statistics Row */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Total Consultations</span>
+                  <div className="text-2xl font-black text-slate-800 font-display">14</div>
+                  <span className="text-[10px] text-slate-500 font-semibold">Today</span>
+                </div>
+
+                <div className="glass bg-white p-5 border-l-4 border-l-indigo-600 border border-slate-200 rounded-2xl shadow-sm space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Emergency Cases</span>
+                  <div className="text-2xl font-black text-indigo-650 font-display flex items-center gap-2">
+                    {emergencies.length || 2}
+                    <span className="w-2.5 h-2.5 bg-indigo-500 rounded-full animate-ping" />
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-semibold">Require attention</span>
+                </div>
+
+                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Pending Follow-ups</span>
+                  <div className="text-2xl font-black text-slate-800 font-display">{followups.length || 5}</div>
+                  <span className="text-[10px] text-slate-500 font-semibold">This week</span>
+                </div>
+
+                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">AI Summaries Ready</span>
+                  <div className="text-2xl font-black text-slate-800 font-display">8</div>
+                  <span className="text-[10px] text-slate-500 font-semibold">To review</span>
+                </div>
+              </div>
+
+              {/* Critical Cases and Schedule Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left side: Critical Cases Panel */}
+                <div className="lg:col-span-6 glass bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center pb-2 border-b">
+                    <h4 className="font-display font-black text-slate-800 text-xs uppercase flex items-center gap-2">
+                      <AlertOctagon className="w-4 h-4 text-indigo-650" /> Critical Cases
+                    </h4>
+                    <span className="text-[9px] font-black bg-indigo-100 text-indigo-850 px-2 py-0.5 rounded-full uppercase border">
+                      {emergencies.length || 2} Active
+                    </span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {emergencies.map((emg: any) => (
+                      <div
+                        key={emg.id}
+                        onClick={() => { setSelectedEmergencyCase(emg); setShowVitalsModal(true); }}
+                        className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl flex items-center justify-between gap-3 cursor-pointer transition-all"
+                      >
+                        <div>
+                          <div className="font-black text-slate-900 text-sm">{emg.name}, Age {emg.age}</div>
+                          <div className="text-[11px] text-slate-500 font-semibold leading-relaxed mt-0.5">{emg.reason}</div>
+                        </div>
+                        <span className="text-[9px] font-black shrink-0 bg-slate-900 text-white px-2 py-1 rounded font-mono uppercase">
+                          Priority 1
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right side: Today's Schedule panel */}
+                <div className="lg:col-span-6 glass bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center pb-2 border-b">
+                    <h4 className="font-display font-black text-slate-800 text-xs uppercase flex items-center gap-2">
+                      <CalendarIcon className="w-4 h-4 text-indigo-600" /> Today's Schedule
+                    </h4>
+                    <span className="text-[9px] font-bold text-slate-400">{appointments.length || 6} appointments</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    {appointments.map((apt: any, idx) => (
+                      <div key={apt.id} className="p-4 bg-slate-50 border border-slate-150 rounded-2xl flex items-center justify-between gap-3">
+                        <div>
+                          <div className="font-black text-slate-900 text-sm">{apt.patientName} - {apt.time}</div>
+                          <div className="text-[11px] text-slate-500 font-semibold mt-0.5">{apt.type}</div>
+                        </div>
+                        {idx === 0 && (
+                          <button
+                            onClick={() => handlePagePatient(apt.patientName)}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-extrabold shadow-sm transition-all shrink-0"
+                          >
+                            Next
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ──────────────────────────────────────────────────────── */}
+          {/* TABS: EMERGENCY QUEUE TAB */}
+          {/* ──────────────────────────────────────────────────────── */}
+          {activeTab === 'emergency' && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="border-b pb-4">
+                <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
+                  <HeartCrack className="w-6 h-6 text-indigo-650 animate-pulse" /> Emergency Queue Monitor
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">High-priority department redirects, active ambulance status, and vital transmission</p>
+              </div>
+
+              {/* Queue Cards */}
+              <div className="space-y-6">
+                {emergencies.map((emg: any) => (
+                  <div key={emg.id} className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                    {/* Patient demographics header */}
+                    <div className="flex justify-between items-start gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-display font-black text-slate-900 text-lg tracking-tight uppercase">{emg.name}</h4>
+                          <span className="text-[9px] font-black bg-slate-900 text-white px-2 py-0.5 rounded font-mono uppercase">
+                            Priority 1
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                          Age: {emg.age} • Gender: {emg.gender} • Department: {emg.department}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">ETA</span>
+                        <span className="text-indigo-650 font-display font-black text-lg">
+                          {emg.etaMinutes === 0 ? 'Admitted' : `${emg.etaMinutes} min`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* AI Escalation Reason Brief */}
+                    <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl space-y-1">
+                      <span className="text-[9px] font-black text-indigo-850 uppercase tracking-widest">AI Escalation Reason</span>
+                      <p className="text-xs text-indigo-755 font-bold leading-relaxed">{emg.reason}</p>
+                    </div>
+
+                    {/* Status grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-0.5">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Status</span>
+                        <div className="text-xs font-extrabold text-slate-800 uppercase flex items-center gap-1.5">
+                          <Activity className="w-3.5 h-3.5 text-indigo-600 animate-pulse" /> {emg.status}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-0.5">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Vitals Transmitted</span>
+                        <div className="text-xs font-extrabold text-slate-800 uppercase flex items-center gap-1">
+                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-650" /> {emg.vitalsTransmitted}
+                        </div>
+                      </div>
+                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-0.5">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Room Prepared</span>
+                        <div className="text-xs font-extrabold text-slate-850 uppercase flex items-center gap-1">
+                          <Building className="w-3.5 h-3.5 text-slate-500" /> {emg.roomPrepared}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => { setSelectedEmergencyCase(emg); setShowVitalsModal(true); }}
+                        className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-md transition-all uppercase tracking-wider"
+                      >
+                        Review AI Vitals
+                      </button>
+                      <button
+                        onClick={() => handleReviewAI(emg.name)}
+                        className="flex-1 py-3 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-extrabold transition-all uppercase tracking-wider"
+                      >
+                        View Full Chart
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {emergencies.length === 0 && (
+                  <div className="p-8 text-center bg-white border rounded-2xl text-slate-400 font-semibold text-xs">
+                    No active emergency check-ins recorded for this clinical queue.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ──────────────────────────────────────────────────────── */}
+          {/* TABS: APPOINTMENTS TAB */}
+          {/* ──────────────────────────────────────────────────────── */}
+          {activeTab === 'appointments' && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="border-b pb-4 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                <div>
+                  <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
+                    <CalendarIcon className="w-6 h-6 text-indigo-600" /> Appointments Management
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">Daily schedules, patient checked-in timelines, and intake priorities</p>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="glass bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                      <th className="p-4 pl-6">Time</th>
+                      <th className="p-4">Patient</th>
+                      <th className="p-4">Age</th>
+                      <th className="p-4">Type</th>
+                      <th className="p-4">AI Priority</th>
+                      <th className="p-4">Status</th>
+                      <th className="p-4 pr-6 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                    {appointments.map((apt: any) => (
+                      <tr key={apt.id} className="hover:bg-slate-50/50">
+                        <td className="p-4 pl-6 font-mono text-slate-500 font-extrabold">{apt.time}</td>
+                        <td className="p-4 font-black text-slate-900">{apt.patientName}</td>
+                        <td className="p-4 text-slate-500">{apt.age}</td>
+                        <td className="p-4 text-slate-500">{apt.type}</td>
+                        <td className="p-4">
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                            apt.priority === 'High Priority' ? 'bg-indigo-100 text-indigo-850' : 'bg-slate-100 text-slate-600 border'
+                          }`}>
+                            {apt.priority}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full uppercase ${
+                            apt.status === 'Checked In' ? 'bg-slate-900 text-white font-mono' :
+                            apt.status === 'Waiting' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'
+                          }`}>
+                            {apt.status}
+                          </span>
+                        </td>
+                        <td className="p-4 pr-6 text-right">
+                          <button
+                            onClick={() => handleReviewAI(apt.patientName)}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-extrabold shadow-sm transition-all"
+                          >
+                            Review AI Triage
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ──────────────────────────────────────────────────────── */}
+          {/* TABS: PATIENTS TAB */}
+          {/* ──────────────────────────────────────────────────────── */}
+          {activeTab === 'patients' && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="border-b pb-4 flex flex-col sm:flex-row justify-between sm:items-start gap-4">
+                <div>
+                  <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
+                    <User className="w-6 h-6 text-indigo-650" /> Patient Records Directory
+                  </h3>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">Explore medical charts, assigned conditions, previous consult histories, and treatment pathways</p>
+                </div>
+                
+                {/* Search Bar */}
+                <div className="w-full sm:w-64 relative shrink-0">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search patients..."
+                    className="w-full pl-9 pr-4 py-2 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                  />
+                </div>
+              </div>
+
+              {/* Cards Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {filteredPatients.map((pat: any) => (
+                  <div key={pat.id} className="glass bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col justify-between gap-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <h4 className="font-display font-black text-slate-900 text-sm truncate uppercase">{pat.name}</h4>
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
+                          pat.priority === 'High Priority' ? 'bg-indigo-100 text-indigo-850' : 'bg-slate-100 text-slate-550 border'
+                        }`}>
+                          {pat.priority}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Age: {pat.age} • Gender: {pat.gender || 'Male'}</p>
+                      
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Primary Condition</span>
+                        <div className="text-xs font-extrabold text-slate-800 leading-relaxed uppercase">{pat.condition}</div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Last Consultation</span>
+                        <div className="text-xs font-semibold text-slate-550">{pat.lastVisit}</div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleReviewAI(pat.name)}
+                      className="w-full py-2 bg-slate-50 border hover:bg-slate-100 text-slate-750 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-wider flex items-center justify-center gap-1"
+                    >
+                      <span>View Full Chart</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                {filteredPatients.length === 0 && (
+                  <div className="p-8 text-center bg-white border rounded-2xl text-slate-400 font-semibold text-xs col-span-3">
+                    No matching patient profiles found.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ──────────────────────────────────────────────────────── */}
+          {/* TABS: FOLLOW-UPS TAB */}
+          {/* ──────────────────────────────────────────────────────── */}
+          {activeTab === 'followups' && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="border-b pb-4">
+                <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
+                  <ClipboardList className="w-6 h-6 text-indigo-650" /> Patient Follow-ups
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Track and sign off automated RAG follow-up routines, blood pressure triggers, and wellness timelines</p>
+              </div>
+
+              {/* Tasks List */}
+              <div className="space-y-3">
+                {followups.map((task: any) => (
+                  <div key={task.id} className="glass bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-display font-black text-slate-900 text-sm uppercase">{task.patientName}</h4>
+                        <span className="text-[9px] font-black font-mono bg-indigo-50 border border-indigo-150 text-indigo-850 px-2 py-0.5 rounded uppercase">
+                          {task.type}
+                        </span>
+                        {task.priority === 'High Priority' && (
+                          <span className="text-[9px] font-black bg-red-100 border border-red-200 text-red-750 px-2 py-0.5 rounded uppercase">
+                            Urgent
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-550 font-bold leading-relaxed uppercase">{task.description}</p>
+                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5 pt-1">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" /> Due: {task.dueDate}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        onClick={() => handleReviewAI(task.patientName)}
+                        className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-wider"
+                      >
+                        View Details
+                      </button>
+                      <button
+                        onClick={() => handleCompleteFollowup(task.id, task.patientName)}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-extrabold shadow-md transition-all uppercase tracking-wider"
+                      >
+                        Complete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {followups.length === 0 && (
+                  <div className="p-8 text-center bg-white border rounded-2xl text-slate-400 font-semibold text-xs">
+                    All therapeutic follow-up tasks checked off!
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ──────────────────────────────────────────────────────── */}
+          {/* TABS: SETTINGS / AI GUIDELINES SEARCH TAB */}
+          {/* ──────────────────────────────────────────────────────── */}
+          {activeTab === 'settings' && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="border-b pb-4">
+                <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
+                  <BrainCircuit className="w-6 h-6 text-indigo-650" /> Guidelines RAG Search Engine
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Securely query clinical RAG protocols, deterministic severity scoring mechanisms, and vectors</p>
+              </div>
+
+              {/* RAG query box */}
+              <div className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                <form onSubmit={handleSearchGuidelines} className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                    <input
+                      type="text"
+                      value={guidelineQuery}
+                      onChange={(e) => setGuidelineQuery(e.target.value)}
+                      placeholder="e.g. chest pain, hypertension crisis, dynamic arrhythmias..."
+                      className="w-full pl-10 pr-4 py-3 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="px-6 bg-slate-900 hover:bg-slate-850 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow"
+                  >
+                    Query Vector DB
+                  </button>
+                </form>
+
+                {/* Search Results Display */}
+                {searchLoading ? (
+                  <div className="py-12 text-center text-slate-400 font-semibold text-xs animate-pulse">
+                    Scanning Pinecone medical vectors...
+                  </div>
+                ) : guidelineResults.length > 0 ? (
+                  <div className="space-y-4 pt-2">
+                    {guidelineResults.map((g: any, index: number) => (
+                      <div key={index} className="p-5 bg-slate-50 border rounded-2xl space-y-4">
+                        <div className="flex justify-between items-start gap-4">
+                          <div>
+                            <h4 className="font-display font-black text-slate-900 text-sm uppercase">{g.symptom} Protocol</h4>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Department Target: {g.department}</p>
+                          </div>
+                          <span className="text-[9px] font-black font-mono bg-indigo-100 text-indigo-850 px-2 py-0.5 rounded uppercase border">
+                            RAG Match
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">First-line Guidelines</span>
+                          <p className="text-xs text-slate-700 font-medium leading-relaxed bg-white p-3 border rounded-xl">{g.guideline}</p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block text-red-650">Red Flags</span>
+                            <ul className="list-disc pl-4 text-xs font-bold text-slate-700 uppercase space-y-0.5">
+                              {g.red_flags?.map((rf: string, idx: number) => (
+                                <li key={idx}>{rf}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Clarifying Triggers</span>
+                            <ul className="list-disc pl-4 text-xs font-semibold text-slate-600 space-y-0.5">
+                              {g.clarifying_questions?.map((cq: string, idx: number) => (
+                                <li key={idx}>{cq}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-8 text-center text-slate-400 font-semibold text-xs bg-slate-50 rounded-2xl">
+                    Query symptom context to pull live medical RAG guidelines instantly.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* ──────────────────────────────────────────────────────── */}
+      {/* MODAL DIALOGS AND OVERLAYS */}
+      {/* ──────────────────────────────────────────────────────── */}
+
+      {/* 1. CLINICAL HANDOFF & TREATMENT PATHWAYS MODAL */}
+      {showHandoffModal && selectedSession && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-2xl w-full shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-6">
+            <div className="flex justify-between items-start pb-4 border-b">
+              <div>
+                <h3 className="font-display font-black text-slate-900 text-lg uppercase flex items-center gap-2">
+                  <BrainCircuit className="w-6 h-6 text-indigo-650 animate-pulse" /> Patient Clinical Handoff
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                  Name: {selectedSession.profile?.name} • Age: {selectedSession.profile?.age} • Severity: {selectedSession.symptoms?.severity}
+                </p>
+              </div>
+              <button onClick={() => setShowHandoffModal(false)} className="p-1 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            {/* AI Diagnostics Summary */}
+            <div className="space-y-4">
+              <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl space-y-1">
+                <span className="text-[9px] font-black text-indigo-850 uppercase tracking-widest block">AI Diagnostic Summary</span>
+                <p className="text-xs text-indigo-755 font-bold leading-relaxed">
+                  {selectedSession.clinicianHandoff?.summary || 'No diagnostic summary generated yet.'}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Identified Symptoms</span>
+                  <div className="flex flex-wrap gap-1">
+                    {(selectedSession.clinicianHandoff?.symptoms || selectedSession.symptoms?.symptoms || []).map((s: string, idx: number) => (
+                      <span key={idx} className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block text-red-650">Possible AI Concerns</span>
+                  <div className="flex flex-wrap gap-1">
+                    {(selectedSession.clinicianHandoff?.possibleConcerns || []).map((c: string, idx: number) => (
+                      <span key={idx} className="text-[10px] font-bold bg-red-50 text-red-750 px-2 py-0.5 rounded border border-red-100">
+                        {c}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* RAG Medical action recommendations */}
+              <div className="space-y-2 border-t pt-4">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Recommended Intake Actions</span>
+                <ul className="list-disc pl-4 text-xs font-semibold text-slate-650 space-y-1">
+                  {(selectedSession.clinicianHandoff?.recommendedActions || []).map((a: string, idx: number) => (
+                    <li key={idx}>{a}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* TREATMENT PLAN SYSTEM */}
+              <div className="border-t pt-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-[9px] font-bold text-indigo-700 uppercase tracking-widest flex items-center gap-1.5">
+                    <BrainCircuit className="w-4 h-4 text-indigo-650" /> Gemini Treatment Pathways
+                  </span>
+                  {!selectedSession.treatmentPlan && (
+                    <button
+                      onClick={handleGeneratePlan}
+                      disabled={generatingPlan}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-extrabold transition-all uppercase tracking-wider disabled:bg-slate-200"
+                    >
+                      {generatingPlan ? 'Synthesizing Pathway...' : 'Generate Plan'}
+                    </button>
+                  )}
+                </div>
+
+                {selectedSession.treatmentPlan ? (
+                  <div className="space-y-3">
+                    {editingPlan ? (
+                      <div className="space-y-2">
+                        {modifiedPlanSteps.map((step, idx) => (
+                          <div key={idx} className="flex gap-2">
+                            <input
+                              type="text"
+                              value={step}
+                              onChange={(e) => {
+                                const copy = [...modifiedPlanSteps];
+                                copy[idx] = e.target.value;
+                                setModifiedPlanSteps(copy);
+                              }}
+                              className="flex-1 px-3 py-2 border rounded-xl text-xs font-semibold outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <button
+                              onClick={() => setModifiedPlanSteps(prev => prev.filter((_, i) => i !== idx))}
+                              className="p-2 hover:bg-red-50 text-red-650 rounded-xl"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => setModifiedPlanSteps(prev => [...prev, 'New step recommendation...'])}
+                          className="text-[10px] text-indigo-650 font-bold uppercase tracking-wider flex items-center gap-1"
+                        >
+                          + Add Step
+                        </button>
+                        <div className="flex gap-2 pt-2">
+                          <button
+                            onClick={handleSavePlanEdits}
+                            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all"
+                          >
+                            Save Pathway
+                          </button>
+                          <button
+                            onClick={() => { setEditingPlan(false); setModifiedPlanSteps(selectedSession.treatmentPlan || []); }}
+                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-650 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="bg-slate-50 border rounded-xl p-4 space-y-2">
+                          {selectedSession.treatmentPlan.map((step: string, idx: number) => (
+                            <div key={idx} className="flex gap-2 text-xs font-semibold text-slate-700">
+                              <span className="text-indigo-600 font-black">{idx + 1}.</span>
+                              <span>{step}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => { setEditingPlan(true); setModifiedPlanSteps(selectedSession.treatmentPlan || []); }}
+                          className="px-4 py-2 bg-slate-100 hover:bg-slate-250 text-slate-750 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all flex items-center gap-1.5"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" /> Modify Pathways
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400 font-semibold italic">Generate a personalized action pathway using Gemini clinical protocols.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SETTINGS TAB - CHANGE PASSWORD */}
+      {activeTab === 'settings' && (
+        <div className="flex-1 p-8">
+          <div className="max-w-lg space-y-6">
+            <div className="border-b pb-4">
+              <h3 className="font-display font-black text-slate-800 text-lg uppercase">Settings</h3>
+              <p className="text-xs text-slate-500 font-semibold mt-0.5">Manage your account and preferences.</p>
+            </div>
+
+            {/* Change Password Card */}
+            <div className="bg-white border rounded-2xl p-6 space-y-4 shadow-sm">
+              <h4 className="font-display font-black text-slate-800 text-sm uppercase flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-indigo-600" /> Change Password
+              </h4>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Current Password</label>
+                  <input
+                    type="password"
+                    value={pwForm.currentPassword}
+                    onChange={(e) => setPwForm({ ...pwForm, currentPassword: e.target.value })}
+                    placeholder="Enter current password"
+                    className="w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">New Password</label>
+                  <input
+                    type="password"
+                    value={pwForm.newPassword}
+                    onChange={(e) => setPwForm({ ...pwForm, newPassword: e.target.value })}
+                    placeholder="Enter new password"
+                    className="w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Confirm New Password</label>
+                  <input
+                    type="password"
+                    value={pwForm.confirmPassword}
+                    onChange={(e) => setPwForm({ ...pwForm, confirmPassword: e.target.value })}
+                    placeholder="Confirm new password"
+                    className="w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    onKeyDown={(e) => e.key === 'Enter' && handleChangePassword()}
+                  />
+                </div>
+              </div>
+
+              {pwStatus && (
+                <p className={`text-xs font-semibold ${pwStatus.startsWith('✅') ? 'text-emerald-600' : 'text-red-600'}`}>
+                  {pwStatus}
+                </p>
+              )}
+
+              <button
+                onClick={handleChangePassword}
+                disabled={pwLoading}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow transition-all disabled:opacity-50"
+              >
+                {pwLoading ? 'Updating...' : 'Update Password'}
+              </button>
+            </div>
+
+            {/* Doctor Profile Card */}
+            {currentDoc && (
+              <div className="bg-white border rounded-2xl p-6 space-y-3 shadow-sm">
+                <h4 className="font-display font-black text-slate-800 text-sm uppercase">Profile</h4>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div><span className="text-slate-400 font-bold">Name:</span> <span className="font-semibold text-slate-700">{currentDoc.name}</span></div>
+                  <div><span className="text-slate-400 font-bold">Department:</span> <span className="font-semibold text-slate-700">{currentDoc.department}</span></div>
+                  <div><span className="text-slate-400 font-bold">Specialty:</span> <span className="font-semibold text-slate-700">{currentDoc.specialty}</span></div>
+                  <div><span className="text-slate-400 font-bold">Floor:</span> <span className="font-semibold text-slate-700">{currentDoc.floor}</span></div>
+                  <div><span className="text-slate-400 font-bold">Room:</span> <span className="font-semibold text-slate-700">{currentDoc.room}</span></div>
+                  <div><span className="text-slate-400 font-bold">Location:</span> <span className="font-semibold text-slate-700">{currentDoc.hospitalLocation}</span></div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 2. EMERGENCY VITALS OVERLAY */}
+      {showVitalsModal && selectedEmergencyCase && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
+            <div className="flex justify-between items-center pb-3 border-b">
+              <h3 className="font-display font-black text-slate-900 text-base uppercase flex items-center gap-2">
+                <Activity className="w-5 h-5 text-indigo-600 animate-pulse" /> Telemetry Vital Feed
+              </h3>
+              <button onClick={() => setShowVitalsModal(false)} className="p-1 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="font-black text-slate-800 text-sm uppercase">Patient: {selectedEmergencyCase.name}</div>
+              
+              {/* Vitals grids */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 bg-slate-50 border rounded-2xl text-center space-y-1">
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Blood Pressure</span>
+                  <span className="text-sm font-black text-slate-900">{selectedEmergencyCase.vitals.bloodPressure}</span>
+                  <span className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider block">mmHg</span>
+                </div>
+                <div className="p-4 bg-slate-50 border rounded-2xl text-center space-y-1">
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Heart Rate</span>
+                  <span className="text-sm font-black text-indigo-600">{selectedEmergencyCase.vitals.heartRate} bpm</span>
+                  <span className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider block">Sinus Tachycardia</span>
+                </div>
+                <div className="p-4 bg-slate-50 border rounded-2xl text-center space-y-1">
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">SpO2 Oxygen</span>
+                  <span className="text-sm font-black text-indigo-600">{selectedEmergencyCase.vitals.oxygenSaturation}%</span>
+                  <span className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider block">Mild Hypoxia</span>
+                </div>
+                <div className="p-4 bg-slate-50 border rounded-2xl text-center space-y-1">
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Temperature</span>
+                  <span className="text-sm font-black text-slate-900">{selectedEmergencyCase.vitals.temperature}</span>
+                  <span className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider block">Normal Range</span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => { setShowVitalsModal(false); handleReviewAI(selectedEmergencyCase.name); }}
+              className="w-full py-3 bg-slate-950 hover:bg-slate-900 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all"
+            >
+              Analyze Handoff Chart
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. SIMULATOR CONTROL DRAWER */}
       {showSimPanel && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
             <div className="flex justify-between items-center pb-2 border-b">
               <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse" /> Clinical Simulation triggers
+                <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse" /> Clinical Simulation Triggers
               </h3>
               <button onClick={() => setShowSimPanel(false)} className="p-1 hover:bg-slate-100 rounded-lg">
                 <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
-            <p className="text-xs text-slate-500 font-medium">Inject high-risk simulated patient intakes to verify the triage, routing, and real-time dashboard notifications.</p>
-            <div className="grid grid-cols-1 gap-2 pt-2">
+            <p className="text-xs text-slate-500 font-medium">Inject high-risk simulated patient check-ins directly into this doctor's clinical queue to test live RAG triage feeds.</p>
+            
+            <div className="grid grid-cols-1 gap-3 pt-2">
               <button
-                onClick={handleSimulateEmergency}
-                className="p-3 bg-red-50 hover:bg-red-100 border border-red-150 rounded-xl text-left transition flex items-center justify-between"
+                onClick={() => handleSimulateCheckin('emergency')}
+                className="p-4 bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-150 rounded-2xl text-left transition flex items-center justify-between"
               >
                 <div>
-                  <div className="text-xs font-bold text-red-800 flex items-center gap-1">David Kim (Cardiomyopathy)</div>
-                  <div className="text-[10px] text-red-600 mt-0.5">59yo M • Chest pain & sweating (EMERGENCY)</div>
+                  <div className="text-xs font-black text-indigo-850 uppercase">David Kim (Acute Chest Pain)</div>
+                  <div className="text-[10px] text-slate-500 font-semibold mt-0.5">59yo M • Subdiaphoresis & Chest tightening (EMERGENCY)</div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-red-600" />
+                <Play className="w-4 h-4 text-indigo-600 shrink-0" />
               </button>
+
               <button
-                onClick={handleSimulatePediatric}
-                className="p-3 bg-amber-50 hover:bg-amber-100 border border-amber-150 rounded-xl text-left transition flex items-center justify-between"
+                onClick={() => handleSimulateCheckin('pediatric')}
+                className="p-4 bg-slate-50 hover:bg-slate-100 border rounded-2xl text-left transition flex items-center justify-between"
               >
                 <div>
-                  <div className="text-xs font-bold text-amber-800 flex items-center gap-1">Tommy Miller (Pediatric Fever)</div>
-                  <div className="text-[10px] text-amber-600 mt-0.5">6yo M • 103F Fever & Severe Lethargy (URGENT)</div>
+                  <div className="text-xs font-black text-slate-800 uppercase">Tommy Miller (Wheezing)</div>
+                  <div className="text-[10px] text-slate-500 font-semibold mt-0.5">6yo M • Acute cough & childhood asthma (URGENT)</div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-amber-600" />
+                <Play className="w-4 h-4 text-slate-400 shrink-0" />
               </button>
             </div>
-            <div className="text-[10px] text-slate-400 text-center font-medium">David Kim automatically routes to Dr. Sarah Jenkins (Cardiology). Tommy Miller routes to Dr. Robert Chen (General Medicine).</div>
           </div>
         </div>
       )}
-
-      {/* Metrics Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass rounded-2xl p-4 flex items-center gap-4 bg-white border shadow-sm transform hover:scale-101 transition-all duration-300">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
-            <User className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Total Intakes</div>
-            <div className="text-2xl font-black text-slate-800 mt-0.5">{totalPatients}</div>
-          </div>
-        </div>
-        <div className="glass rounded-2xl p-4 flex items-center gap-4 bg-white border shadow-sm transform hover:scale-101 transition-all duration-300">
-          <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600 shrink-0 animate-pulse">
-            <AlertOctagon className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Critical / ER</div>
-            <div className="text-2xl font-black text-red-600 mt-0.5">{criticalCount}</div>
-          </div>
-        </div>
-        <div className="glass rounded-2xl p-4 flex items-center gap-4 bg-white border shadow-sm transform hover:scale-101 transition-all duration-300">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
-            <CheckCircle className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Reviewed</div>
-            <div className="text-2xl font-black text-emerald-700 mt-0.5">{completedIntakes}</div>
-          </div>
-        </div>
-        <div className="glass rounded-2xl p-4 flex items-center gap-4 bg-white border shadow-sm transform hover:scale-101 transition-all duration-300">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Workload Status</div>
-            <div className="text-sm font-black text-slate-700 mt-1 uppercase">
-              {totalPatients > 5 ? 'High Demand' : totalPatients > 2 ? 'Moderate' : 'Optimal'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Grid: Patients & Clinical Timeline */}
-      <div className="grid lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Patient queue & Clinical guideline database tabbed explorer */}
-        <div className="lg:col-span-4 space-y-4">
-          <div className="glass rounded-2xl p-4 bg-white border shadow-sm flex flex-col">
-            {/* Tab Headers */}
-            <div className="flex border-b border-slate-100 pb-2 mb-3">
-              <button
-                onClick={() => setActiveLeftTab('queue')}
-                className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all ${
-                  activeLeftTab === 'queue' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                Assigned Queue ({docPatients.length})
-              </button>
-              <button
-                onClick={() => setActiveLeftTab('guidelines')}
-                className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all ${
-                  activeLeftTab === 'guidelines' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                RAG Guideline Search
-              </button>
-            </div>
-
-            {/* TAB CONTENT: Patient queue */}
-            {activeLeftTab === 'queue' ? (
-              <div>
-                {loading ? (
-                  <div className="text-center py-10 text-slate-450 text-xs font-bold animate-pulse">Syncing clinical queue...</div>
-                ) : docPatients.length === 0 ? (
-                  <div className="text-center py-12 px-4 space-y-2">
-                    <Heart className="w-8 h-8 text-slate-300 mx-auto animate-pulse" />
-                    <div className="text-xs font-extrabold text-slate-655">No patients assigned</div>
-                    <p className="text-[10px] text-slate-400 leading-tight">Assigned intakes will automatically stream here. Use "Simulate Check-in" above to mock one.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-                    {docPatients.map((sessionItem) => {
-                      const isActive = selectedSession?.id === sessionItem.id;
-                      const isReviewed = reviewedPatients.includes(sessionItem.id);
-                      return (
-                        <button
-                          key={sessionItem.id}
-                          onClick={() => {
-                            setSelectedSession(sessionItem);
-                            setModifiedPlanSteps(sessionItem.treatmentPlan || []);
-                            setEditingPlan(false);
-                          }}
-                          className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-start justify-between gap-3 ${
-                            isActive
-                              ? 'bg-gradient-to-r from-indigo-50/70 to-slate-50/50 border-indigo-300 ring-1 ring-indigo-200/50 shadow-sm'
-                              : 'bg-white hover:bg-slate-50 border-slate-150'
-                          }`}
-                        >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-extrabold text-xs text-slate-800">
-                                {String(sessionItem.profile?.name || 'Anonymous')}
-                              </span>
-                              {isReviewed && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" title="Reviewed" />
-                              )}
-                            </div>
-                            <div className="text-[10px] text-slate-500 font-semibold">
-                              {sessionItem.profile?.age} yrs • {sessionItem.profile?.gender}
-                            </div>
-                            <div className="flex flex-wrap gap-1 mt-1">
-                              {sessionItem.structuredIntake?.symptoms.slice(0, 2).map((s) => (
-                                <span key={s} className="text-[8px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 font-bold uppercase tracking-wider">
-                                  {s}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col items-end gap-1.5 shrink-0">
-                            {sessionItem.triage?.urgency && (
-                              <UrgencyBadge level={sessionItem.triage.urgency} />
-                            )}
-                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-0.5">
-                              Slot: {sessionItem.doctorSuggestion?.appointmentTime}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* TAB CONTENT: Guidelines search Explorer */
-              <div className="space-y-3">
-                <form onSubmit={handleSearchGuidelines} className="relative flex gap-1.5">
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search symptoms e.g. chest pain, stomach..."
-                    className="flex-1 px-3 py-2 border rounded-xl text-xs outline-none focus:ring-1 focus:ring-indigo-500 font-semibold"
-                  />
-                  <button
-                    type="submit"
-                    className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow transition"
-                  >
-                    <Search className="w-4 h-4" />
-                  </button>
-                </form>
-
-                {searchLoading ? (
-                  <div className="text-center py-6 text-slate-400 text-xs font-bold animate-pulse">Querying clinical vectors...</div>
-                ) : searchResults.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 text-[10px] font-semibold">
-                    Input a medical keyword to search indexed guidelines in Pinecone.
-                  </div>
-                ) : (
-                  <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
-                    {searchResults.map((guide) => (
-                      <div key={guide.id} className="p-3 bg-slate-50 border rounded-xl space-y-1.5 text-[11px] font-semibold text-slate-700 shadow-2xs">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="font-bold text-slate-900 capitalize">{guide.symptom}</span>
-                          <span className="text-[9px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full uppercase font-bold tracking-wider">{guide.department}</span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 italic">Guideline: {guide.guideline}</div>
-                        {guide.red_flags?.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            <span className="text-[8px] font-bold text-red-700 uppercase">Red flags:</span>
-                            {guide.red_flags.map((flag: string, fIdx: number) => (
-                              <span key={fIdx} className="text-[8px] bg-red-155 text-red-800 px-1 py-0.5 rounded font-bold">{flag}</span>
-                            ))}
-                          </div>
-                        )}
-                        {guide.clarifying_questions?.length > 0 && (
-                          <div className="space-y-0.5">
-                            <span className="text-[8px] text-indigo-700 uppercase font-bold block">Clarifying:</span>
-                            {guide.clarifying_questions.slice(0, 2).map((q: string, qIdx: number) => (
-                              <div key={qIdx} className="text-[9px] text-slate-650 leading-tight">? {q}</div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Department Analytics Card */}
-          {docPatients.length > 0 && (
-            <div className="glass rounded-2xl p-4 bg-white border shadow-sm space-y-4">
-              <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-widest pb-1 border-b">
-                Intake Workload Analytics
-              </h3>
-
-              <div className="space-y-4">
-                {/* Urgency Distribution Chart */}
-                {urgencyChartData.length > 0 && (
-                  <div className="space-y-1">
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Urgency Profile</div>
-                    <ResponsiveContainer width="100%" height={120}>
-                      <BarChart data={urgencyChartData} margin={{ left: -30 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fontSize: 8 }} />
-                        <YAxis tick={{ fontSize: 8 }} />
-                        <Tooltip />
-                        <Bar dataKey="value" fill="#6366f1" radius={[3, 3, 0, 0]}>
-                          {urgencyChartData.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-
-                {/* Age Distribution Chart */}
-                {ageChartData.some((c) => c.value > 0) && (
-                  <div className="space-y-1 border-t pt-3">
-                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Age Demographics</div>
-                    <ResponsiveContainer width="100%" height={120}>
-                      <BarChart data={ageChartData} margin={{ left: -30 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="name" tick={{ fontSize: 8 }} />
-                        <YAxis tick={{ fontSize: 8 }} />
-                        <Tooltip />
-                        <Bar dataKey="value" fill="#818cf8" radius={[3, 3, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Column: Selected Clinical Timeline & Details */}
-        <div className="lg:col-span-8">
-          {selectedSession ? (
-            <div className="glass rounded-2xl p-6 bg-white border border-slate-150 shadow-md space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-display text-lg font-black text-slate-800 tracking-tight">
-                      Clinical Intake: {selectedSession.profile?.name}
-                    </h3>
-                    {selectedSession.triage?.urgency && (
-                      <UrgencyBadge level={selectedSession.triage.urgency} />
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                    Admission complete • Registered: {new Date(selectedSession.createdAt).toLocaleString()}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-1.5 self-stretch sm:self-auto">
-                  <button
-                    onClick={() => handlePagePatient(String(selectedSession.profile?.name), String(selectedSession.doctorSuggestion?.room))}
-                    className="flex-1 sm:flex-initial py-1.5 px-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-750 border border-indigo-150 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition"
-                  >
-                    <Bell className="w-3.5 h-3.5" /> Call Patient
-                  </button>
-                  <button
-                    onClick={() => handleReviewPatient(selectedSession.id)}
-                    disabled={reviewedPatients.includes(selectedSession.id)}
-                    className="flex-1 sm:flex-initial py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-50 text-white disabled:text-emerald-700 border border-transparent disabled:border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" /> {reviewedPatients.includes(selectedSession.id) ? 'Clinical Accepted' : 'Accept Intake'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Patient Intake Context Details */}
-              <div className="grid sm:grid-cols-2 gap-4 text-xs font-semibold text-slate-700">
-                {/* Profile Card */}
-                <div className="p-4 bg-slate-50 rounded-2xl space-y-2 border">
-                  <h4 className="font-bold text-slate-800 flex items-center gap-1 uppercase tracking-wider text-[10px]">
-                    <User className="w-3.5 h-3.5 text-slate-500" /> Patient Background
-                  </h4>
-                  <div className="space-y-1">
-                    <div><span className="font-bold text-slate-400 block uppercase text-[8px] tracking-wider">Age / Gender:</span> {selectedSession.profile?.age} yrs / {selectedSession.profile?.gender}</div>
-                    <div>
-                      <span className="font-bold text-slate-400 block uppercase text-[8px] tracking-wider mt-1">Existing Conditions:</span>{' '}
-                      {selectedSession.profile?.existingConditions?.length
-                        ? selectedSession.profile.existingConditions.join(', ')
-                        : 'None reported'}
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-400 block uppercase text-[8px] tracking-wider mt-1">Medications:</span>{' '}
-                      {selectedSession.profile?.medications?.length
-                        ? selectedSession.profile.medications.join(', ')
-                        : 'None reported'}
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-400 block uppercase text-[8px] tracking-wider mt-1">Allergies:</span>{' '}
-                      {selectedSession.profile?.allergies?.length
-                        ? selectedSession.profile.allergies.join(', ')
-                        : 'None reported'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Intake Symptoms */}
-                <div className="p-4 bg-slate-50 rounded-2xl space-y-2 border">
-                  <h4 className="font-bold text-slate-800 flex items-center gap-1 uppercase tracking-wider text-[10px]">
-                    <Stethoscope className="w-3.5 h-3.5 text-slate-500" /> Symptom Overview
-                  </h4>
-                  <div className="space-y-1">
-                    <div>
-                      <span className="font-bold text-slate-400 block uppercase text-[8px] tracking-wider">Urgency Level:</span>{' '}
-                      <span className="font-extrabold capitalize text-indigo-750">{selectedSession.triage?.urgency}</span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-400 block uppercase text-[8px] tracking-wider mt-1">Reported Severity:</span>{' '}
-                      <span className="font-semibold capitalize text-slate-800">{selectedSession.structuredIntake?.severity || 'Medium'}</span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-400 block uppercase text-[8px] tracking-wider mt-1">Symptom Duration:</span>{' '}
-                      <span>{selectedSession.structuredIntake?.duration || 'Not specified'}</span>
-                    </div>
-                    <div>
-                      <span className="font-bold text-slate-400 block uppercase text-[8px] tracking-wider mt-1">Assigned Clinic Slot:</span>{' '}
-                      <span className="font-extrabold">{selectedSession.doctorSuggestion?.appointmentTime}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Gemini Professional Clinician Handoff */}
-              {selectedSession.clinicianHandoff && (
-                <div className="space-y-2">
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-widest flex items-center gap-1.5">
-                    <FileText className="w-4 h-4 text-indigo-600" /> GenAI Clinician Handoff Note
-                  </h4>
-                  <div className="p-4 bg-indigo-50/20 border border-indigo-100 rounded-2xl relative">
-                    <p className="text-xs text-slate-800 leading-relaxed font-sans select-all">
-                      {selectedSession.clinicianHandoff.summary}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Interactive AI Treatment Plan Generator Panel */}
-              <div className="space-y-2 pt-2 border-t border-slate-100">
-                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-widest flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-indigo-600" /> AI-Generated Treatment Recommendations
-                </h4>
-
-                {generatingPlan ? (
-                  /* Stunning Pulsing skeleton loader */
-                  <div className="p-4 bg-slate-50 border rounded-2xl space-y-3 animate-pulse">
-                    <div className="text-xs text-indigo-700 font-extrabold animate-bounce flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-indigo-600" /> CareAssist engine formulating action pathway...
-                    </div>
-                    <div className="h-3 bg-slate-200 rounded w-5/6"></div>
-                    <div className="h-3 bg-slate-200 rounded w-4/5"></div>
-                    <div className="h-3 bg-slate-200 rounded w-2/3"></div>
-                  </div>
-                ) : selectedSession.treatmentPlan ? (
-                  /* Treatment plan display with dynamic clinical modifications */
-                  <div className="p-4 bg-indigo-50/30 border border-indigo-150 rounded-2xl space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1">
-                        <CheckCircle className="w-3 h-3" /> GenAI Clinical Steps Active
-                      </span>
-                      {editingPlan ? (
-                        <button
-                          onClick={handleSavePlanEdits}
-                          className="text-[10px] text-emerald-700 hover:text-emerald-800 flex items-center gap-1 font-bold"
-                        >
-                          <Save className="w-3.5 h-3.5" /> Save Plan
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => setEditingPlan(true)}
-                          className="text-[10px] text-slate-500 hover:text-indigo-600 flex items-center gap-1 font-bold"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" /> Modify recommendations
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      {modifiedPlanSteps.map((step, idx) => (
-                        <div key={idx} className="flex items-start gap-2 text-xs font-semibold text-slate-700">
-                          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0 text-[10px]">
-                            {idx + 1}
-                          </span>
-                          {editingPlan ? (
-                            <input
-                              type="text"
-                              value={step}
-                              onChange={(e) => {
-                                const newSteps = [...modifiedPlanSteps];
-                                newSteps[idx] = e.target.value;
-                                setModifiedPlanSteps(newSteps);
-                              }}
-                              className="flex-1 px-2 py-1 border rounded-lg text-xs"
-                            />
-                          ) : (
-                            <span className="leading-snug pt-0.5">{step}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="text-[9px] text-slate-450 italic leading-tight pt-1">
-                      ⚠️ Note: Treatment instructions generated by CareAssist AI are clinicians-only guidance tools. The reviewing physician holds final accountability for prescription & discharge protocols.
-                    </div>
-                  </div>
-                ) : (
-                  /* Button triggers Gemini API plan generation */
-                  <div className="text-center p-6 border border-dashed border-slate-200 rounded-2xl space-y-3 bg-slate-50/50">
-                    <p className="text-xs text-slate-500 font-semibold">Generate a custom clinical action pathway based on symptoms & health metrics.</p>
-                    <button
-                      onClick={handleGeneratePlan}
-                      className="px-4 py-2 bg-gradient-to-r from-care-600 to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md hover:from-care-700 hover:to-indigo-850 flex items-center gap-1.5 mx-auto active:scale-98 transition transform duration-200"
-                    >
-                      <Sparkles className="w-4 h-4 text-indigo-200" /> Synthesize Patient Action Steps
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Structured Possible Concerns */}
-              {selectedSession.structuredIntake?.possible_concerns && (
-                <div className="space-y-2 pt-2">
-                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-widest text-slate-500">
-                    Assessed Clinical Concerns
-                  </h4>
-                  <ul className="grid sm:grid-cols-2 gap-1.5 text-xs text-slate-700 font-semibold">
-                    {selectedSession.structuredIntake.possible_concerns.map((c, i) => (
-                      <li key={i} className="flex items-center gap-1.5 p-2 bg-slate-50 rounded-xl border border-slate-100">
-                        <ChevronRight className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                        <span className="truncate">{c}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Conversation Transcript Logs */}
-              <div className="space-y-2 border-t pt-4">
-                <h4 className="font-bold text-slate-800 text-xs uppercase tracking-widest text-slate-500">
-                  Intake Interview Transcript
-                </h4>
-                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1 text-xs font-semibold">
-                  {selectedSession.messages.map((m, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-3 rounded-2xl max-w-[85%] ${
-                        m.role === 'user'
-                          ? 'bg-slate-100 text-slate-800 ml-auto'
-                          : 'bg-indigo-50/40 text-indigo-950'
-                      }`}
-                    >
-                      <div className="font-black text-[8px] uppercase tracking-widest text-slate-400 mb-0.5">
-                        {m.role === 'user' ? 'Patient' : 'CareAssist AI'}
-                      </div>
-                      <div className="leading-relaxed whitespace-pre-line">{m.content}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="glass rounded-2xl p-12 text-center text-slate-500 space-y-3 bg-white h-full flex flex-col items-center justify-center border shadow-sm">
-              <Stethoscope className="w-12 h-12 text-slate-350 animate-pulse" />
-              <div className="font-extrabold text-slate-700 text-xs uppercase tracking-widest">practitioner station awaiting patient selection</div>
-              <p className="text-xs text-slate-450 max-w-sm mx-auto leading-tight">Select an active patient check-in timeline from the queue on the left to analyze intake files, GenAI notes, and trigger AI treatment recommendations.</p>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

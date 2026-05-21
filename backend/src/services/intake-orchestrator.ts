@@ -123,8 +123,8 @@ export async function processMessage(
         ...new Set([...session.symptoms.symptoms, ...analysis.symptoms]),
       ];
       if (analysis.severity) session.symptoms.severity = analysis.severity;
-      if (/day|week|hour|month|since|ago|morning/i.test(userMessage)) {
-        session.symptoms.duration = userMessage.match(/(\d+\s*(day|week|hour|month)s?)/i)?.[0] || userMessage;
+      if (/day|week|hour|month|year|since|ago|morning/i.test(userMessage)) {
+        session.symptoms.duration = userMessage.match(/(\d+\s*(day|week|hour|month|year)s?)/i)?.[0] || userMessage;
       }
     }
 
@@ -166,8 +166,8 @@ export async function processMessage(
     session.symptoms.symptoms = [
       ...new Set([...session.symptoms.symptoms, ...analysis.symptoms]),
     ];
-    if (/day|week|hour|month|since|ago|morning/i.test(userMessage) && !session.symptoms.duration) {
-      session.symptoms.duration = userMessage.match(/(\d+\s*(day|week|hour|month)s?)/i)?.[0] || userMessage;
+    if (/day|week|hour|month|year|since|ago|morning/i.test(userMessage) && !session.symptoms.duration) {
+      session.symptoms.duration = userMessage.match(/(\d+\s*(day|week|hour|month|year)s?)/i)?.[0] || userMessage;
     }
     if (analysis.severity) session.symptoms.severity = analysis.severity;
 
@@ -183,7 +183,7 @@ export async function processMessage(
     if (needsDuration && !session.pendingQuestion) {
       session.phase = 'symptoms';
       session.pendingQuestion = 'duration';
-      reply = `Thank you. Could you please specify how long you have been experiencing these symptoms?`;
+      reply = `Thank you. Could you please specify how long you have been experiencing these symptoms? (Please specify in days, months, or years)`;
     } else {
       const needsClarification =
         session.phase === 'symptoms' &&

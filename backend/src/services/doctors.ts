@@ -1,9 +1,16 @@
 import type { Department, UrgencyLevel } from '../types/index.js';
+import {
+  dbGetDoctors, dbGetDoctorById, dbGetDoctorByUsername, dbGetDoctorForDepartment,
+  dbInsertDoctor, dbUpdateDoctorPassword,
+  dbGetDepartments, dbAddDepartment,
+  getAdminSetting, setAdminSetting,
+  type DbDoctor
+} from './database.js';
 
 export interface Doctor {
   id: string;
   name: string;
-  department: Department;
+  department: string;
   specialty: string;
   floor: number;
   room: string;
@@ -17,126 +24,42 @@ export interface DoctorCredentials {
   role: 'doctor' | 'admin';
 }
 
-// ─── Dynamic Doctor Registry (In-Memory for demo, Firestore for production) ───
-const doctorRegistry: Map<string, Doctor> = new Map();
-const credentialStore: Map<string, DoctorCredentials> = new Map();
-
-// ─── Seed Default Doctors ───
-const SEED_DOCTORS: Doctor[] = [
-  {
-    id: 'doc-1',
-    name: 'Dr. Sarah Jenkins',
-    department: 'Cardiology',
-    specialty: 'Interventional Cardiology',
-    floor: 3,
-    room: '305',
-    hospitalLocation: 'Building C, Wing 3',
-  },
-  {
-    id: 'doc-2',
-    name: 'Dr. Alan Turing',
-    department: 'Neurology',
-    specialty: 'Clinical Neurology & Neurogenetics',
-    floor: 4,
-    room: '412',
-    hospitalLocation: 'Building B, Wing 4',
-  },
-  {
-    id: 'doc-3',
-    name: 'Dr. Marcus Welby',
-    department: 'Orthopedics',
-    specialty: 'Orthopedic Surgery & Joint Reconstruction',
-    floor: 2,
-    room: '204',
-    hospitalLocation: 'Building A, Wing 2',
-  },
-  {
-    id: 'doc-4',
-    name: 'Dr. Elizabeth Blackwell',
-    department: 'Pulmonology',
-    specialty: 'Pulmonary & Critical Care Medicine',
-    floor: 3,
-    room: '318',
-    hospitalLocation: 'Building C, Wing 3',
-  },
-  {
-    id: 'doc-5',
-    name: 'Dr. Gregory House',
-    department: 'Dermatology',
-    specialty: 'Clinical Dermatology & Diagnostic Pathology',
-    floor: 2,
-    room: '221',
-    hospitalLocation: 'Building B, Wing 2',
-  },
-  {
-    id: 'doc-6',
-    name: 'Dr. Fiona Gallagher',
-    department: 'ENT',
-    specialty: 'Otolaryngology & Throat Care',
-    floor: 1,
-    room: '145',
-    hospitalLocation: 'Building A, Wing 1',
-  },
-  {
-    id: 'doc-7',
-    name: 'Dr. Sigmund Freud',
-    department: 'Psychiatry',
-    specialty: 'Clinical Psychiatry & Psychotherapy',
-    floor: 5,
-    room: '501',
-    hospitalLocation: 'Building D, Wing 5',
-  },
-  {
-    id: 'doc-8',
-    name: 'Dr. John Carter',
-    department: 'Emergency Care',
-    specialty: 'Emergency Medicine & Trauma',
-    floor: 1,
-    room: 'ER-1',
-    hospitalLocation: 'Emergency Care Pavilion, Ground Floor',
-  },
-  {
-    id: 'doc-9',
-    name: 'Dr. Robert Chen',
-    department: 'General Medicine',
-    specialty: 'Family & Internal Medicine',
-    floor: 1,
-    room: '102',
-    hospitalLocation: 'Building A, Ground Floor',
-  },
-];
-
-function seedDefaults() {
-  // Register all default doctors
-  for (const doc of SEED_DOCTORS) {
-    doctorRegistry.set(doc.id, doc);
-    // Generate username from first name lowercase
-    const firstName = doc.name.replace('Dr. ', '').split(' ')[0].toLowerCase();
-    credentialStore.set(firstName, {
-      username: firstName,
-      password: 'password',
-      doctorId: doc.id,
-      role: 'doctor',
-    });
-  }
-
-  // Register admin account
-  credentialStore.set('admin', {
-    username: 'admin',
-    password: 'admin123',
-    doctorId: 'admin',
-    role: 'admin',
-  });
+// ─── Conversion helper ───
+function dbToDoctor(d: DbDoctor): Doctor {
+  return {
+    id: d.id,
+    name: d.name,
+    department: d.department,
+    specialty: d.specialty,
+    floor: d.floor,
+    room: d.room,
+    hospitalLocation: d.hospital_location,
+  };
 }
-
-// Initialize on module load
-seedDefaults();
 
 // ─── Public API ───
 
-/** Get all registered doctors */
+/** Get all registered departments from SQLite */
+export function getDepartments(): string[] {
+  return dbGetDepartments();
+}
+
+/** Add a new department to SQLite */
+export function addDepartment(name: string): boolean {
+  if (!name || name.trim() === '') return false;
+  return dbAddDepartment(name.trim());
+}
+
+/** Change admin password in SQLite */
+export function changeAdminPassword(newPassword: string): boolean {
+  if (!newPassword || newPassword.trim() === '') return false;
+  setAdminSetting('admin_password', newPassword.trim());
+  return true;
+}
+
+/** Get all registered doctors from SQLite */
 export function getDoctors(): Doctor[] {
-  return Array.from(doctorRegistry.values());
+  return dbGetDoctors().map(dbToDoctor);
 }
 
 // Keep backward-compat export
@@ -144,14 +67,20 @@ export const DOCTORS = getDoctors();
 
 /** Find a doctor by their ID */
 export function getDoctorById(id: string): Doctor | undefined {
-  return doctorRegistry.get(id);
+  const d = dbGetDoctorById(id);
+  return d ? dbToDoctor(d) : undefined;
 }
 
 /** Find a doctor matching a department */
-export function getDoctorForDepartment(dept: Department): Doctor {
-  const all = getDoctors();
-  const found = all.find((d) => d.department === dept);
-  return found || all.find((d) => d.department === 'General Medicine')!;
+export function getDoctorForDepartment(dept: string): Doctor {
+  const d = dbGetDoctorForDepartment(dept);
+  if (d) return dbToDoctor(d);
+  // Fallback to General Medicine
+  const fallback = dbGetDoctors().find(doc => doc.department === 'General Medicine');
+  if (fallback) return dbToDoctor(fallback);
+  // Last resort: return first doctor
+  const all = dbGetDoctors();
+  return dbToDoctor(all[0]);
 }
 
 /** Validate login credentials. Returns user info or null. */
@@ -159,15 +88,18 @@ export function validateCredentials(
   username: string,
   password: string
 ): { role: 'doctor' | 'admin'; doctorId: string; name: string; department?: string } | null {
-  const cred = credentialStore.get(username.toLowerCase().trim());
-  if (!cred || cred.password !== password) return null;
+  const uname = username.toLowerCase().trim();
 
-  if (cred.role === 'admin') {
+  // Check admin
+  if (uname === 'admin') {
+    const adminPass = getAdminSetting('admin_password') || 'admin123';
+    if (password !== adminPass) return null;
     return { role: 'admin', doctorId: 'admin', name: 'Hospital Administrator' };
   }
 
-  const doc = doctorRegistry.get(cred.doctorId);
-  if (!doc) return null;
+  // Check doctor credentials from SQLite
+  const doc = dbGetDoctorByUsername(uname);
+  if (!doc || doc.password !== password) return null;
 
   return {
     role: 'doctor',
@@ -177,33 +109,55 @@ export function validateCredentials(
   };
 }
 
-/** Register a new doctor (admin action) */
+/** Register a new doctor (admin action) — persisted to SQLite */
 export function registerDoctor(
   doc: Omit<Doctor, 'id'>,
   username: string,
   password: string
 ): { success: boolean; doctor?: Doctor; error?: string } {
   // Check username uniqueness
-  if (credentialStore.has(username.toLowerCase().trim())) {
+  const existing = dbGetDoctorByUsername(username);
+  if (existing) {
     return { success: false, error: 'Username already taken' };
   }
 
   const id = `doc-${Date.now()}`;
-  const newDoc: Doctor = { id, ...doc };
-
-  doctorRegistry.set(id, newDoc);
-  credentialStore.set(username.toLowerCase().trim(), {
+  const success = dbInsertDoctor({
+    id,
+    name: doc.name,
+    department: doc.department,
+    specialty: doc.specialty,
+    floor: doc.floor,
+    room: doc.room,
+    hospital_location: doc.hospitalLocation,
     username: username.toLowerCase().trim(),
     password,
-    doctorId: id,
-    role: 'doctor',
   });
 
-  return { success: true, doctor: newDoc };
+  if (!success) {
+    return { success: false, error: 'Failed to register doctor' };
+  }
+
+  return { success: true, doctor: { id, ...doc } };
+}
+
+/** Change a doctor's own password */
+export function changeDoctorPassword(
+  doctorId: string,
+  currentPassword: string,
+  newPassword: string
+): { success: boolean; error?: string } {
+  const doc = dbGetDoctorById(doctorId);
+  if (!doc) return { success: false, error: 'Doctor not found' };
+  if (doc.password !== currentPassword) return { success: false, error: 'Current password is incorrect' };
+  if (!newPassword || newPassword.trim().length < 3) return { success: false, error: 'New password must be at least 3 characters' };
+
+  const updated = dbUpdateDoctorPassword(doctorId, newPassword.trim());
+  return updated ? { success: true } : { success: false, error: 'Failed to update password' };
 }
 
 /** Generate appointment slot text based on urgency */
-export function generateAppointment(urgency: UrgencyLevel): string {
+export function generateAppointment(urgency: string): string {
   if (urgency === 'emergency') {
     return 'Immediate - Proceed directly to Emergency Pavilion';
   }
@@ -213,13 +167,26 @@ export function generateAppointment(urgency: UrgencyLevel): string {
 
   const now = new Date();
   const appointmentTime = new Date(now.getTime() + 30 * 60 * 1000);
-
   let hours = appointmentTime.getHours();
   const minutes = appointmentTime.getMinutes();
   const ampm = hours >= 12 ? 'PM' : 'AM';
   hours = hours % 12;
   hours = hours ? hours : 12;
   const minutesStr = minutes < 10 ? '0' + minutes : minutes;
-
   return `Today at ${hours}:${minutesStr} ${ampm}`;
+}
+
+/** Get doctors with credentials for admin console visualization */
+export function getDoctorsWithCredentials() {
+  return dbGetDoctors().map((doc) => ({
+    id: doc.id,
+    name: doc.name,
+    department: doc.department,
+    specialty: doc.specialty,
+    floor: doc.floor,
+    room: doc.room,
+    hospitalLocation: doc.hospital_location,
+    username: doc.username,
+    password: doc.password,
+  }));
 }
