@@ -65,6 +65,8 @@ export default function DoctorDashboardPage() {
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [pwStatus, setPwStatus] = useState<string | null>(null);
   const [pwLoading, setPwLoading] = useState(false);
+  const [availabilityStatus, setAvailabilityStatus] = useState<string>('available');
+  const [statusUpdating, setStatusUpdating] = useState(false);
 
   const handleChangePassword = async () => {
     if (!authUser) return;
@@ -147,6 +149,7 @@ export default function DoctorDashboardPage() {
         const doc = docs.find((d) => d.id === user.doctorId);
         if (doc) {
           setCurrentDoc(doc);
+          setAvailabilityStatus(doc.availabilityStatus || 'available');
           showToast(`Workstation loaded for ${doc.name}`, 'success');
         }
       } catch {
@@ -411,6 +414,16 @@ export default function DoctorDashboardPage() {
           <div className="overflow-hidden">
             <h4 className="font-display font-black text-slate-800 text-xs truncate uppercase">{currentDoc.name}</h4>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider truncate">{currentDoc.department} Dept</p>
+            <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase mt-1 inline-block ${
+              availabilityStatus === 'available' ? 'bg-green-100 text-green-700 border border-green-200' :
+              availabilityStatus === 'in_consult' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+              availabilityStatus === 'on_break' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
+              'bg-slate-100 text-slate-500 border border-slate-200'
+            }`}>
+              {availabilityStatus === 'available' ? 'Available' :
+               availabilityStatus === 'in_consult' ? 'In Consult' :
+               availabilityStatus === 'on_break' ? 'On Break' : 'Off Duty'}
+            </span>
           </div>
         </div>
 
@@ -1182,6 +1195,51 @@ export default function DoctorDashboardPage() {
             <div className="border-b pb-4">
               <h3 className="font-display font-black text-slate-800 text-lg uppercase">Settings</h3>
               <p className="text-xs text-slate-500 font-semibold mt-0.5">Manage your account and preferences.</p>
+            </div>
+
+            {/* Availability Status Card */}
+            <div className="bg-white border rounded-2xl p-6 space-y-4 shadow-sm">
+              <h4 className="font-display font-black text-slate-800 text-sm uppercase flex items-center gap-2">
+                <Activity className="w-4 h-4 text-indigo-600" /> Availability Status
+              </h4>
+              <p className="text-xs text-slate-500 font-semibold">Set your current availability. This is visible to hospital administrators.</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'available', label: 'Available', color: 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' },
+                  { value: 'in_consult', label: 'In Consult', color: 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' },
+                  { value: 'on_break', label: 'On Break', color: 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100' },
+                  { value: 'off_duty', label: 'Off Duty', color: 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    disabled={statusUpdating}
+                    onClick={async () => {
+                      if (!authUser) return;
+                      setStatusUpdating(true);
+                      try {
+                        const res = await api.updateDoctorStatus(authUser.doctorId, opt.value);
+                        if (res.success) {
+                          setAvailabilityStatus(opt.value);
+                          showToast(`Status updated to ${opt.label}`, 'success');
+                        } else {
+                          showToast(res.error || 'Failed to update status', 'error');
+                        }
+                      } catch {
+                        showToast('Failed to update status', 'error');
+                      } finally {
+                        setStatusUpdating(false);
+                      }
+                    }}
+                    className={`p-3 rounded-xl border text-xs font-extrabold uppercase tracking-wider transition-all ${
+                      availabilityStatus === opt.value
+                        ? `${opt.color} ring-2 ring-indigo-500 shadow-sm`
+                        : `${opt.color} opacity-60`
+                    } disabled:opacity-40`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Change Password Card */}

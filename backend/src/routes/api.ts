@@ -6,7 +6,7 @@ import { getAnalyticsSummary } from '../services/bigquery.js';
 import { speechToText, textToSpeechAudio } from '../services/speech.js';
 import { seedClinicalGuidelines } from '../services/pinecone.js';
 import { config } from '../config.js';
-import { getDoctors, validateCredentials, registerDoctor, getDepartments, addDepartment, changeAdminPassword, getDoctorsWithCredentials, changeDoctorPassword } from '../services/doctors.js';
+import { getDoctors, validateCredentials, registerDoctor, getDepartments, addDepartment, changeAdminPassword, getDoctorsWithCredentials, changeDoctorPassword, updateDoctorStatus } from '../services/doctors.js';
 import {
   getEmergencyQueueByDepartment,
   getAppointmentsByDepartment,
@@ -17,7 +17,7 @@ import {
 import {
   dbGetPatientByPhone, dbInsertPatient, dbGetPatientById, dbUpdatePatient,
   dbGetSessionsByPatient, dbUpdateSessionApproval, dbLinkSessionToPatient,
-  dbGetStats, getAdminSetting, dbGetSessionsByDepartment
+  dbGetStats, getAdminSetting, dbGetSessionsByDepartment, dbGetDepartmentStats
 } from '../services/database.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Department } from '../types/index.js';
@@ -476,6 +476,35 @@ apiRouter.post('/doctor/change-password', (req, res) => {
 apiRouter.get('/db/stats', (_req, res) => {
   try {
     const stats = dbGetStats();
+    res.json(stats);
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// ─── Doctor Availability Status ───
+
+apiRouter.patch('/doctor/:id/status', (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!status) {
+      return res.status(400).json({ success: false, error: 'Status is required' });
+    }
+    const result = updateDoctorStatus(req.params.id, status);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+// ─── Department Stats (real patient counts) ───
+
+apiRouter.get('/admin/department-stats', (_req, res) => {
+  try {
+    const stats = dbGetDepartmentStats();
     res.json(stats);
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });

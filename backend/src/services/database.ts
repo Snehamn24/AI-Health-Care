@@ -34,6 +34,7 @@ db.exec(`
     hospital_location TEXT DEFAULT 'Main Building',
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
+    availability_status TEXT DEFAULT 'available',
     created_at TEXT DEFAULT (datetime('now'))
   );
 
@@ -67,6 +68,13 @@ db.exec(`
     value TEXT NOT NULL
   );
 `);
+
+// Migration: add availability_status column if missing (for existing DBs)
+try {
+  db.exec(`ALTER TABLE doctors ADD COLUMN availability_status TEXT DEFAULT 'available'`);
+} catch {
+  // Column already exists
+}
 
 // ─── Admin Settings ───
 
@@ -117,6 +125,7 @@ export interface DbDoctor {
   hospital_location: string;
   username: string;
   password: string;
+  availability_status: string;
   created_at: string;
 }
 
@@ -148,8 +157,32 @@ export function dbUpdateDoctorPassword(doctorId: string, newPassword: string): b
   return info.changes > 0;
 }
 
+export function dbUpdateDoctorStatus(doctorId: string, status: string): boolean {
+  const info = db.prepare('UPDATE doctors SET availability_status = ? WHERE id = ?').run(status, doctorId);
+  return info.changes > 0;
+}
+
 export function dbGetDoctorForDepartment(dept: string): DbDoctor | undefined {
   return db.prepare('SELECT * FROM doctors WHERE department = ? LIMIT 1').get(dept) as DbDoctor | undefined;
+}
+
+/** Get real patient counts per department from sessions table */
+export function dbGetDepartmentStats(): { department: string; patientCount: number; approvedCount: number; pendingCount: number; emergencyCount: number }[] {
+  const all = db.prepare("SELECT * FROM sessions WHERE phase = 'complete' AND patient_id IS NOT NULL").all() as DbSession[];
+  const deptMap: Record<string, { patientCount: number; approvedCount: number; pendingCount: number; emergencyCount: number }> = {};
+  for (const s of all) {
+    try {
+      const triage = JSON.parse(s.triage_json || '{}');
+      const dept = triage.department;
+      if (!dept) continue;
+      if (!deptMap[dept]) deptMap[dept] = { patientCount: 0, approvedCount: 0, pendingCount: 0, emergencyCount: 0 };
+      deptMap[dept].patientCount++;
+      if (s.approval_status === 'approved') deptMap[dept].approvedCount++;
+      if (s.approval_status === 'pending') deptMap[dept].pendingCount++;
+      if (['emergency', 'urgent'].includes(triage.urgency)) deptMap[dept].emergencyCount++;
+    } catch { /* skip */ }
+  }
+  return Object.entries(deptMap).map(([department, stats]) => ({ department, ...stats }));
 }
 
 // ─── Patient Operations ───

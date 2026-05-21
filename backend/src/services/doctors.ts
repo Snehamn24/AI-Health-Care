@@ -1,7 +1,7 @@
 import type { Department, UrgencyLevel } from '../types/index.js';
 import {
   dbGetDoctors, dbGetDoctorById, dbGetDoctorByUsername, dbGetDoctorForDepartment,
-  dbInsertDoctor, dbUpdateDoctorPassword,
+  dbInsertDoctor, dbUpdateDoctorPassword, dbUpdateDoctorStatus,
   dbGetDepartments, dbAddDepartment,
   getAdminSetting, setAdminSetting,
   type DbDoctor
@@ -15,6 +15,7 @@ export interface Doctor {
   floor: number;
   room: string;
   hospitalLocation: string;
+  availabilityStatus: string;
 }
 
 export interface DoctorCredentials {
@@ -34,6 +35,7 @@ function dbToDoctor(d: DbDoctor): Doctor {
     floor: d.floor,
     room: d.room,
     hospitalLocation: d.hospital_location,
+    availabilityStatus: d.availability_status || 'available',
   };
 }
 
@@ -156,6 +158,19 @@ export function changeDoctorPassword(
   return updated ? { success: true } : { success: false, error: 'Failed to update password' };
 }
 
+/** Update a doctor's availability status */
+export function updateDoctorStatus(
+  doctorId: string,
+  status: string
+): { success: boolean; error?: string } {
+  const validStatuses = ['available', 'in_consult', 'on_break', 'off_duty'];
+  if (!validStatuses.includes(status)) {
+    return { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` };
+  }
+  const updated = dbUpdateDoctorStatus(doctorId, status);
+  return updated ? { success: true } : { success: false, error: 'Doctor not found' };
+}
+
 /** Generate appointment slot text based on urgency */
 export function generateAppointment(urgency: string): string {
   if (urgency === 'emergency') {
@@ -188,5 +203,6 @@ export function getDoctorsWithCredentials() {
     hospitalLocation: doc.hospital_location,
     username: doc.username,
     password: doc.password,
+    availabilityStatus: doc.availability_status || 'available',
   }));
 }

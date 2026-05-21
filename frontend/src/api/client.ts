@@ -32,6 +32,7 @@ export interface DoctorInfo {
   floor: number;
   room: string;
   hospitalLocation: string;
+  availabilityStatus?: string;
 }
 
 export interface PatientAccount {
@@ -197,4 +198,15 @@ export const api = {
   // Sessions routed to a specific department (for doctor portal)
   getSessionsByDepartment: (dept: string) =>
     request<any[]>(`/sessions/by-department?dept=${encodeURIComponent(dept)}`),
+
+  // Doctor availability status update
+  updateDoctorStatus: (doctorId: string, status: string) =>
+    request<{ success: boolean; error?: string }>(`/doctor/${doctorId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    }),
+
+  // Department stats (real patient counts per department)
+  getDepartmentStats: () =>
+    request<{ department: string; patientCount: number; approvedCount: number; pendingCount: number; emergencyCount: number }[]>('/admin/department-stats'),
 };

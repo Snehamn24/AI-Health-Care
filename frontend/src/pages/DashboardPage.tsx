@@ -24,15 +24,7 @@ import {
   Server,
   Terminal
 } from 'lucide-react';
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid
-} from 'recharts';
+
 
 export default function DashboardPage() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -43,6 +35,7 @@ export default function DashboardPage() {
   const [doctors, setDoctors] = useState<DoctorInfo[]>([]);
   const [dbStatus, setDbStatus] = useState({ online: true, mode: 'Memory-Mapped Registry Store', provider: 'SQLite & In-Memory Fallbacks' });
   const [loading, setLoading] = useState(false);
+  const [deptStats, setDeptStats] = useState<{ department: string; patientCount: number; approvedCount: number; pendingCount: number; emergencyCount: number }[]>([]);
 
   // Layout Controls
   const [activeTab, setActiveTab] = useState<'overview' | 'routing_requests' | 'departments' | 'doctors' | 'triage_monitor' | 'emergency_monitor' | 'settings'>('overview');
@@ -81,6 +74,7 @@ export default function DashboardPage() {
         }
       }),
       api.getDoctorsWithCredentials().then(setDoctors),
+      api.getDepartmentStats().then(setDeptStats).catch(() => {}),
       api.health().then((h) => {
         setDbStatus({
           online: true,
@@ -213,19 +207,18 @@ export default function DashboardPage() {
     return <LoginGate onLogin={handleLoginSuccess} />;
   }
 
-  // Pre-seed volume vs AI resolution charts mapping step chart precisely to Image 4
-  const steppedVolumeData = [
-    { name: '00:00', volume: 10, resolved: 5 },
-    { name: '04:00', volume: 5, resolved: 3 },
-    { name: '08:00', volume: 45, resolved: 28 },
-    { name: '12:00', volume: 90, resolved: 62 },
-    { name: '16:00', volume: 75, resolved: 58 },
-    { name: '20:00', volume: 35, resolved: 22 },
-  ];
 
-  // Dynamic status counters
-  const activeEmergencies = sessions.filter(s => s.triage?.urgency === 'emergency' || s.triage?.urgency === 'urgent').length;
-  const criticalCount = activeEmergencies;
+
+  // ── Registered sessions = completed intake linked to a patient account ──
+  // This is the single source of truth for ALL admin counts.
+  // Anonymous / test sessions that were never saved to a patient account are excluded.
+  const registeredSessions = (sessions as any[]).filter(
+    (s) => s.phase === 'complete' && s.linkedPatientId
+  );
+
+  const criticalCount = registeredSessions.filter(
+    (s) => s.triage?.urgency === 'emergency' || s.triage?.urgency === 'urgent'
+  ).length;
 
   return (
     <div className="min-h-[calc(100vh-65px)] flex bg-slate-50 text-slate-700 font-sans overflow-hidden">
@@ -278,7 +271,7 @@ export default function DashboardPage() {
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${
               activeTab === 'routing_requests' ? 'bg-white text-indigo-650' : 'bg-indigo-100 text-indigo-850 border-indigo-200'
             }`}>
-              12
+              {registeredSessions.length}
             </span>
           </button>
 
@@ -325,7 +318,7 @@ export default function DashboardPage() {
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${
               activeTab === 'emergency_monitor' ? 'bg-white text-indigo-650' : 'bg-red-100 text-red-750 border-red-200'
             }`}>
-              4
+              {criticalCount}
             </span>
           </button>
 
@@ -389,73 +382,76 @@ export default function DashboardPage() {
           {/* ──────────────────────────────────────────────────────── */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              {/* Stat Tiles */}
+              {/* Stat Tiles — derived from registeredSessions (completed + linked to a patient account) */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Active Intake Sessions</span>
-                  <div className="text-2xl font-black text-slate-800 font-display">{sessions.length}</div>
-                  <span className="text-[10px] text-slate-500 font-semibold">Total in database</span>
-                </div>
-
-                <div className="glass bg-white p-5 border-l-4 border-l-red-500 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Emergency Cases</span>
-                  <div className="text-2xl font-black text-red-650 font-display flex items-center gap-2">
-                    {criticalCount}
-                    {criticalCount > 0 && <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-ping" />}
+                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Registered Intakes</span>
+                    <span className="text-[10px] text-slate-500 font-semibold">Linked patient sessions</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-semibold">High Priority Alert</span>
+                  <span className="text-sm font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-xl font-mono">{registeredSessions.length}</span>
                 </div>
 
-                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Clinics Active</span>
-                  <div className="text-2xl font-black text-slate-800 font-display">{departments.length}</div>
-                  <span className="text-[10px] text-slate-500 font-semibold">Departments Registered</span>
+                <div className="glass bg-white p-5 border-l-4 border-l-red-500 border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Emergency Cases</span>
+                    <span className="text-[10px] text-slate-500 font-semibold">High Priority Alert</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {criticalCount > 0 && <span className="w-2 h-2 bg-red-500 rounded-full animate-ping" />}
+                    <span className="text-sm font-black text-red-700 bg-red-50 border border-red-200 px-3 py-1 rounded-xl font-mono">{criticalCount}</span>
+                  </div>
                 </div>
 
-                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Active Doctors</span>
-                  <div className="text-2xl font-black text-slate-800 font-display">{doctors.length}</div>
-                  <span className="text-[10px] text-slate-500 font-semibold">Physicians Registered</span>
+                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Clinics Active</span>
+                    <span className="text-[10px] text-slate-500 font-semibold">Departments Registered</span>
+                  </div>
+                  <span className="text-sm font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-xl font-mono">{departments.length}</span>
+                </div>
+
+                <div className="glass bg-white p-5 border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Active Doctors</span>
+                    <span className="text-[10px] text-slate-500 font-semibold">Physicians Registered</span>
+                  </div>
+                  <span className="text-sm font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-xl font-mono">{doctors.length}</span>
                 </div>
               </div>
 
-              {/* RAG statistics and active directories */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <div className="lg:col-span-8 glass bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              {/* Department Summary (Database Registry panel removed) */}
+              <div className="grid grid-cols-1 gap-6">
+                <div className="glass bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
                   <h4 className="font-display font-black text-slate-800 text-xs uppercase flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-indigo-650" /> Clinical Routing Volume Chart
+                    <TrendingUp className="w-4 h-4 text-indigo-650" /> Department Patient Distribution
                   </h4>
-                  <div className="h-64">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={steppedVolumeData}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} />
-                        <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} />
-                        <Tooltip />
-                        <Area type="monotone" dataKey="volume" stroke="#4f46e5" fill="rgba(79, 70, 229, 0.1)" strokeWidth={2} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                <div className="lg:col-span-4 glass bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                  <h4 className="font-display font-black text-slate-800 text-xs uppercase flex items-center gap-2">
-                    <Database className="w-4 h-4 text-indigo-600" /> Database Registry Schemas
-                  </h4>
-                  <div className="space-y-3 font-semibold text-xs text-slate-650">
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-150">
-                      <span className="text-[9px] font-black text-indigo-850 uppercase block mb-1">Active Store Mode</span>
-                      <p className="font-mono text-slate-700">In-Memory Collections</p>
+                  {deptStats.length === 0 ? (
+                    <div className="py-12 text-center text-slate-400 text-xs font-semibold">No registered patients routed to any department yet.</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {deptStats.map((ds) => {
+                        const maxCount = Math.max(...deptStats.map(d => d.patientCount), 1);
+                        const pct = Math.round((ds.patientCount / maxCount) * 100);
+                        return (
+                          <div key={ds.department} className="space-y-1">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="font-black text-slate-800 uppercase">{ds.department}</span>
+                              <span className="font-mono font-bold text-slate-500">{ds.patientCount} patient{ds.patientCount !== 1 ? 's' : ''}</span>
+                            </div>
+                            <div className="w-full bg-slate-100 rounded-full h-2">
+                              <div className={`h-2 rounded-full ${ds.emergencyCount > 0 ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${pct}%` }}></div>
+                            </div>
+                            <div className="flex gap-3 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                              <span className="text-green-600">{ds.approvedCount} approved</span>
+                              <span className="text-amber-600">{ds.pendingCount} pending</span>
+                              {ds.emergencyCount > 0 && <span className="text-red-600">{ds.emergencyCount} urgent</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-150">
-                      <span className="text-[9px] font-black text-indigo-850 uppercase block mb-1">Primary Engine Location</span>
-                      <p className="font-mono text-slate-700 select-all">backend/src/services/doctors.ts</p>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-150">
-                      <span className="text-[9px] font-black text-indigo-850 uppercase block mb-1">Clinical Mocks Store</span>
-                      <p className="font-mono text-slate-700 select-all">backend/src/services/clinical-records.ts</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -470,16 +466,16 @@ export default function DashboardPage() {
               <div className="border-b pb-4 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
                 <div>
                   <h3 className="font-display font-black text-slate-800 text-lg uppercase">Routing Requests</h3>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5 font-sans">AI Appointment Routing System — {sessions.filter((s: any) => s.phase === 'complete').length} completed intakes from database.</p>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5 font-sans">AI Appointment Routing System — showing registered patients only.</p>
                 </div>
               </div>
 
-              {/* Real session cards from SQLite */}
+              {/* Only registered patients (linkedPatientId present) with completed intake */}
               <div className="space-y-4">
-                {sessions.filter((s: any) => s.phase === 'complete').length === 0 && (
-                  <div className="text-center py-12 text-slate-400 text-sm">No completed intake sessions found in the database.</div>
+                {sessions.filter((s: any) => s.phase === 'complete' && s.linkedPatientId).length === 0 && (
+                  <div className="text-center py-12 text-slate-400 text-sm">No completed intake sessions from registered patients found.</div>
                 )}
-                {sessions.filter((s: any) => s.phase === 'complete').map((s: any) => {
+                {sessions.filter((s: any) => s.phase === 'complete' && s.linkedPatientId).map((s: any) => {
                   const isEmergency = s.triage?.urgency === 'emergency';
                   const patientName = s.profile?.name || 'Unknown Patient';
                   const symptoms = s.symptoms?.symptoms || [];
@@ -571,106 +567,57 @@ export default function DashboardPage() {
                 <p className="text-xs text-slate-500 font-semibold mt-0.5">Live utilization and capacity across units.</p>
               </div>
 
-              {/* Department Load Balancing Cards exactly matching Image 2 layout */}
+              {/* Department Cards - Dynamic from Database */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                
-                {/* Cardiology */}
-                <div className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex justify-between items-center pb-2">
-                    <h4 className="font-display font-black text-slate-900 text-sm uppercase">CARDIOLOGY</h4>
-                    <span className="text-red-600 font-display font-black text-sm">85%</span>
-                  </div>
-                  {/* Load bar red */}
-                  <div className="w-full bg-slate-100 rounded-full h-2">
-                    <div className="bg-red-500 h-2 rounded-full" style={{ width: '85%' }}></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-500">
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Staff Active</span>
-                      <span className="text-slate-850 font-black">12/15</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Avg Wait</span>
-                      <span className="text-slate-850 font-black">45m</span>
-                    </div>
-                  </div>
-                  {/* Warning Box */}
-                  <div className="p-3 bg-red-50/50 border border-red-150 rounded-xl text-[10px] text-red-750 font-bold flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 text-red-600 animate-pulse" />
-                    <span>AI OVERFLOW ROUTING ACTIVE</span>
-                  </div>
-                </div>
+                {departments.map((dept) => {
+                  const stats = deptStats.find(d => d.department === dept);
+                  const deptDoctors = doctors.filter((d: any) => d.department === dept);
+                  const activeDoctors = deptDoctors.filter((d: any) => (d.availabilityStatus || 'available') === 'available' || (d.availabilityStatus || 'available') === 'in_consult');
+                  const patientCount = stats?.patientCount || 0;
+                  const hasEmergency = (stats?.emergencyCount || 0) > 0;
+                  const loadPct = deptDoctors.length > 0 ? Math.min(Math.round((patientCount / Math.max(deptDoctors.length * 3, 1)) * 100), 100) : 0;
 
-                {/* Neurology */}
-                <div className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex justify-between items-center pb-2">
-                    <h4 className="font-display font-black text-slate-900 text-sm uppercase">NEUROLOGY</h4>
-                    <span className="text-indigo-650 font-display font-black text-sm">60%</span>
-                  </div>
-                  {/* Load bar blue */}
-                  <div className="w-full bg-slate-100 rounded-full h-2">
-                    <div className="bg-indigo-600 h-2 rounded-full" style={{ width: '60%' }}></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-500">
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Staff Active</span>
-                      <span className="text-slate-850 font-black">8/8</span>
+                  return (
+                    <div key={dept} className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
+                      <div className="flex justify-between items-center pb-2">
+                        <h4 className="font-display font-black text-slate-900 text-sm uppercase">{dept}</h4>
+                        <span className={`font-display font-black text-sm ${loadPct > 70 ? 'text-red-600' : 'text-indigo-650'}`}>{loadPct}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 rounded-full h-2">
+                        <div className={`h-2 rounded-full ${loadPct > 70 ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${loadPct}%` }}></div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-4 text-xs font-semibold text-slate-500">
+                        <div>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Doctors</span>
+                          <span className="text-slate-850 font-black">{activeDoctors.length}/{deptDoctors.length}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Patients</span>
+                          <span className="text-slate-850 font-black">{patientCount}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Approved</span>
+                          <span className="text-green-700 font-black">{stats?.approvedCount || 0}</span>
+                        </div>
+                      </div>
+                      {hasEmergency && (
+                        <div className="p-3 bg-red-50/50 border border-red-150 rounded-xl text-[10px] text-red-750 font-bold flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-600 animate-pulse" />
+                          <span>{stats?.emergencyCount} URGENT CASE{(stats?.emergencyCount || 0) > 1 ? 'S' : ''} ACTIVE</span>
+                        </div>
+                      )}
+                      {deptDoctors.length === 0 && (
+                        <div className="p-3 bg-amber-50/50 border border-amber-150 rounded-xl text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                          <span>NO DOCTORS ASSIGNED</span>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Avg Wait</span>
-                      <span className="text-slate-850 font-black">15m</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* General Practice */}
-                <div className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex justify-between items-center pb-2">
-                    <h4 className="font-display font-black text-slate-900 text-sm uppercase">GEN PRACTICE</h4>
-                    <span className="text-indigo-650 font-display font-black text-sm">40%</span>
-                  </div>
-                  {/* Load bar blue */}
-                  <div className="w-full bg-slate-100 rounded-full h-2">
-                    <div className="bg-indigo-600 h-2 rounded-full" style={{ width: '40%' }}></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-500">
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Staff Active</span>
-                      <span className="text-slate-850 font-black">20/25</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Avg Wait</span>
-                      <span className="text-slate-850 font-black">5m</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ER / Trauma */}
-                <div className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-                  <div className="flex justify-between items-center pb-2">
-                    <h4 className="font-display font-black text-slate-900 text-sm uppercase">ER / TRAUMA</h4>
-                    <span className="text-red-655 font-display font-black text-sm">95%</span>
-                  </div>
-                  {/* Load bar red */}
-                  <div className="w-full bg-slate-100 rounded-full h-2">
-                    <div className="bg-red-500 h-2 rounded-full" style={{ width: '95%' }}></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-500">
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Staff Active</span>
-                      <span className="text-slate-850 font-black">30/30</span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">Avg Wait</span>
-                      <span className="text-red-650 font-black uppercase">Critical</span>
-                    </div>
-                  </div>
-                  {/* Warning Box */}
-                  <div className="p-3 bg-red-50/50 border border-red-150 rounded-xl text-[10px] text-red-750 font-bold flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5 text-red-600 animate-pulse" />
-                    <span>AI OVERFLOW ROUTING ACTIVE</span>
-                  </div>
-                </div>
+                  );
+                })}
+                {departments.length === 0 && (
+                  <div className="lg:col-span-2 text-center py-12 text-slate-400 text-sm font-semibold">No departments registered yet. Add one below.</div>
+                )}
               </div>
 
               {/* Add Clinical Unit form */}
@@ -724,36 +671,39 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
-                    {/* seeded records or loaded from credentials */}
-                    {doctors.map((doc: any, index: number) => (
-                      <tr key={doc.id || index} className="hover:bg-slate-50/50">
-                        <td className="p-4 pl-6 font-black text-slate-900">{doc.name}</td>
-                        <td className="p-4 text-slate-500 font-bold">{doc.department}</td>
-                        <td className="p-4">
-                          <span className={`text-[9px] font-black px-3 py-1 rounded border uppercase ${
-                            index === 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
-                            index === 1 ? 'bg-yellow-50 text-yellow-750 border-yellow-200' :
-                            index === 3 ? 'bg-red-50 text-red-750 border-red-200' :
-                            index === 4 ? 'bg-slate-100 text-slate-500' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                          }`}>
-                            {index === 0 ? 'AVAILABLE' :
-                             index === 1 ? 'IN CONSULT' :
-                             index === 3 ? 'CRITICAL' :
-                             index === 4 ? 'OFF DUTY' : 'AVAILABLE'}
-                          </span>
-                        </td>
-                        <td className="p-4 font-mono font-extrabold text-slate-800">
-                          {index === 0 ? 2 : index === 1 ? 1 : index === 3 ? 5 : 0}
-                        </td>
-                        <td className="p-4 pr-6">
-                          <div className="flex items-center gap-2 text-[10px] font-black text-indigo-850">
-                            <span>User: <code className="bg-indigo-50 px-1 py-0.5 rounded text-indigo-755 font-mono select-all">{doc.username}</code></span>
-                            <span>|</span>
-                            <span>Pass: <code className="bg-indigo-50 px-1 py-0.5 rounded text-indigo-755 font-mono select-all">{doc.password}</code></span>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {doctors.map((doc: any) => {
+                      const docDeptStats = deptStats.find(d => d.department === doc.department);
+                      const patientCount = docDeptStats?.patientCount || 0;
+                      const status = doc.availabilityStatus || 'available';
+                      const statusConfig: Record<string, { label: string; cls: string }> = {
+                        available: { label: 'AVAILABLE', cls: 'bg-green-50 text-green-700 border-green-200' },
+                        in_consult: { label: 'IN CONSULT', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                        on_break: { label: 'ON BREAK', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+                        off_duty: { label: 'OFF DUTY', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
+                      };
+                      const sc = statusConfig[status] || statusConfig.available;
+                      return (
+                        <tr key={doc.id} className="hover:bg-slate-50/50">
+                          <td className="p-4 pl-6 font-black text-slate-900">{doc.name}</td>
+                          <td className="p-4 text-slate-500 font-bold">{doc.department}</td>
+                          <td className="p-4">
+                            <span className={`text-[9px] font-black px-3 py-1 rounded border uppercase ${sc.cls}`}>
+                              {sc.label}
+                            </span>
+                          </td>
+                          <td className="p-4 font-mono font-extrabold text-slate-800">
+                            {patientCount}
+                          </td>
+                          <td className="p-4 pr-6">
+                            <div className="flex items-center gap-2 text-[10px] font-black text-indigo-850">
+                              <span>User: <code className="bg-indigo-50 px-1 py-0.5 rounded text-indigo-755 font-mono select-all">{doc.username}</code></span>
+                              <span>|</span>
+                              <span>Pass: <code className="bg-indigo-50 px-1 py-0.5 rounded text-indigo-755 font-mono select-all">{doc.password}</code></span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -874,35 +824,51 @@ export default function DashboardPage() {
           {/* ──────────────────────────────────────────────────────── */}
           {activeTab === 'triage_monitor' && (
             <div className="space-y-6 animate-fade-in">
-              {/* Header */}
               <div className="border-b pb-4">
                 <h3 className="font-display font-black text-slate-800 text-lg uppercase">AI TRIAGE MONITOR</h3>
-                <p className="text-xs text-slate-500 font-semibold mt-0.5">Real-time analysis of AI-handled intakes vs total volume.</p>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Real-time analysis of AI-handled intakes from database.</p>
               </div>
 
-              {/* Stepped Chart exactly matching Image 4 layout */}
+              {/* Urgency Distribution from real sessions */}
               <div className="glass bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
                 <div className="flex justify-between items-center pb-2 border-b">
                   <span className="text-[10px] font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-indigo-650" /> VOLUME VS AI RESOLUTION
+                    <CheckCircle2 className="w-4 h-4 text-indigo-650" /> TRIAGE URGENCY DISTRIBUTION
                   </span>
                   <span className="text-[9px] font-black bg-slate-100 text-slate-600 px-3 py-1 rounded border uppercase">
-                    PAST 24 HOURS
+                    {registeredSessions.length} REGISTERED INTAKES
                   </span>
                 </div>
-
-                <div className="h-96">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={steppedVolumeData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} />
-                      <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} domain={[0, 100]} />
-                      <Tooltip />
-                      <Area type="step" dataKey="volume" stroke="#000" fill="rgba(0,0,0,0.03)" strokeWidth={1.5} name="Total Volume" />
-                      <Area type="step" dataKey="resolved" stroke="#4f46e5" fill="rgba(79, 70, 229, 0.08)" strokeWidth={2} name="AI Resolved" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                {(() => {
+                  const urgencyGroups: Record<string, number> = {};
+                  registeredSessions.forEach((s: any) => {
+                    const u = s.triage?.urgency || 'unknown';
+                    urgencyGroups[u] = (urgencyGroups[u] || 0) + 1;
+                  });
+                  const total = registeredSessions.length || 1;
+                  const urgencyColors: Record<string, string> = {
+                    emergency: 'bg-red-500', urgent: 'bg-orange-500', high: 'bg-amber-500',
+                    medium: 'bg-indigo-600', low: 'bg-green-500', unknown: 'bg-slate-400'
+                  };
+                  return (
+                    <div className="space-y-3">
+                      {Object.entries(urgencyGroups).sort(([,a],[,b]) => b - a).map(([urgency, count]) => (
+                        <div key={urgency} className="space-y-1">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-black text-slate-800 uppercase">{urgency}</span>
+                            <span className="font-mono font-bold text-slate-500">{count} ({Math.round((count / total) * 100)}%)</span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-2.5">
+                            <div className={`h-2.5 rounded-full ${urgencyColors[urgency] || 'bg-slate-400'}`} style={{ width: `${Math.round((count / total) * 100)}%` }}></div>
+                          </div>
+                        </div>
+                      ))}
+                      {Object.keys(urgencyGroups).length === 0 && (
+                        <div className="py-12 text-center text-slate-400 text-xs font-semibold">No registered intake sessions to analyze yet.</div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           )}
@@ -918,65 +884,65 @@ export default function DashboardPage() {
                   <h3 className="font-display font-black text-red-655 text-lg uppercase flex items-center gap-2">
                     <ShieldAlert className="w-6 h-6 text-red-550 animate-pulse" /> EMERGENCY MONITOR
                   </h3>
-                  <p className="text-xs text-slate-500 font-semibold mt-0.5">Critical cases requiring immediate intervention.</p>
+                  <p className="text-xs text-slate-500 font-semibold mt-0.5">Critical cases requiring immediate intervention — sourced from database.</p>
                 </div>
-                {/* Flashing Red Beacon */}
                 <span className="relative flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
                 </span>
               </div>
 
-              {/* Stat Boxes exactly matching Image 5 layout */}
+              {/* Stat Boxes — sourced from registeredSessions only */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="glass bg-white p-5 border-2 border-red-500 rounded-3xl shadow-sm space-y-1">
                   <span className="text-[9px] font-black text-red-750 uppercase tracking-widest block">ACTIVE CRITICAL CASES</span>
-                  <div className="text-3xl font-black text-red-650 font-display">4</div>
+                  <div className="text-3xl font-black text-red-650 font-display">{criticalCount}</div>
                 </div>
-
                 <div className="glass bg-white p-5 border border-slate-900 rounded-3xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest block">AMBULANCES DISPATCHED</span>
-                  <div className="text-3xl font-black text-slate-900 font-display">2</div>
+                  <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest block">PENDING APPROVAL</span>
+                  <div className="text-3xl font-black text-slate-900 font-display">
+                    {registeredSessions.filter((s: any) => s.approvalStatus === 'pending').length}
+                  </div>
                 </div>
-
                 <div className="glass bg-white p-5 border border-slate-900 rounded-3xl shadow-sm space-y-1">
-                  <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest block">ICU OCCUPANCY</span>
-                  <div className="text-3xl font-black text-slate-900 font-display">92%</div>
+                  <span className="text-[9px] font-black text-slate-800 uppercase tracking-widest block">TOTAL REGISTERED</span>
+                  <div className="text-3xl font-black text-slate-900 font-display">{registeredSessions.length}</div>
                 </div>
               </div>
 
-              {/* Alert timeline ticker exactly matching Image 5 list */}
+              {/* Emergency/Urgent Sessions — registered patients only */}
               <div className="glass bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
                 <div className="bg-slate-900 px-6 py-3 border-b text-[10px] text-white font-black uppercase tracking-wider">
-                  LIVE ALERT STREAM
+                  EMERGENCY &amp; URGENT SESSIONS — REGISTERED PATIENTS
                 </div>
                 <div className="divide-y divide-slate-100 font-semibold text-xs text-slate-700">
-                  {/* Row 1: High alert red highlighted row */}
-                  <div className="p-5 pl-6 bg-red-50/50 flex gap-4">
-                    <span className="text-red-600 font-mono font-extrabold shrink-0">10:42 AM</span>
-                    <div className="space-y-1">
-                      <div className="font-black text-red-850 uppercase">Thomas H. escalated to Priority 1 ER queue.</div>
-                      <div className="text-[10px] text-red-600 font-bold uppercase tracking-wider">Suspected Cardiac Event. ETA 5m. Prepared Bay 4.</div>
-                    </div>
-                  </div>
-
-                  {/* Row 2: Standard alert */}
-                  <div className="p-5 pl-6 flex gap-4">
-                    <span className="text-slate-400 font-mono font-extrabold shrink-0">10:35 AM</span>
-                    <div className="space-y-1">
-                      <div className="font-black text-slate-850 uppercase">ER capacity warning triggered.</div>
-                      <div className="text-[10px] text-slate-500">Re-routing non-critical walk-ins to Urgent Care Wing B.</div>
-                    </div>
-                  </div>
-
-                  {/* Row 3: Standard alert */}
-                  <div className="p-5 pl-6 flex gap-4">
-                    <span className="text-slate-400 font-mono font-extrabold shrink-0">10:15 AM</span>
-                    <div className="space-y-1">
-                      <div className="font-black text-slate-850 uppercase">Ambulance #14 dispatched.</div>
-                      <div className="text-[10px] text-slate-500">Trauma case. ETA 12m.</div>
-                    </div>
-                  </div>
+                  {registeredSessions.filter((s: any) => {
+                    const urgency = s.triage?.urgency;
+                    return urgency === 'emergency' || urgency === 'urgent' || urgency === 'high';
+                  }).length === 0 && (
+                    <div className="p-8 text-center text-slate-400 text-sm font-semibold">No emergency or urgent cases from registered patients.</div>
+                  )}
+                  {registeredSessions.filter((s: any) => {
+                    const urgency = s.triage?.urgency;
+                    return urgency === 'emergency' || urgency === 'urgent' || urgency === 'high';
+                  }).map((s: any) => {
+                    const isEmergency = s.triage?.urgency === 'emergency';
+                    return (
+                      <div key={s.id} className={`p-5 pl-6 flex gap-4 ${isEmergency ? 'bg-red-50/50' : ''}`}>
+                        <span className={`${isEmergency ? 'text-red-600' : 'text-slate-400'} font-mono font-extrabold shrink-0`}>
+                          {new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <div className="space-y-1">
+                          <div className={`font-black uppercase ${isEmergency ? 'text-red-850' : 'text-slate-850'}`}>
+                            {s.profile?.name || 'Unknown'} — {s.triage?.urgency?.toUpperCase()} priority
+                          </div>
+                          <div className={`text-[10px] font-bold uppercase tracking-wider ${isEmergency ? 'text-red-600' : 'text-slate-500'}`}>
+                            {(s.symptoms?.symptoms || []).join(', ') || 'Symptoms pending'} • Dept: {s.triage?.department || 'Unassigned'}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
