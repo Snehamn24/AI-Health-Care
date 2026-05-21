@@ -1,0 +1,212 @@
+[
+  {
+    "id": "chest-pain-001",
+    "symptom": "chest pain",
+    "category": "cardiovascular",
+    "department": "Cardiology",
+    "urgency_hints": ["high", "emergency"],
+    "clarifying_questions": [
+      "Are you experiencing shortness of breath or difficulty breathing?",
+      "How long have you had the chest pain?",
+      "Does the pain radiate to your arm, jaw, or back?",
+      "Are you sweating or feeling nauseous?"
+    ],
+    "red_flags": ["chest pain with sweating", "radiating arm pain", "severe crushing pain"],
+    "guideline": "Chest pain may indicate cardiac ischemia. Assess for ACS symptoms including diaphoresis, radiation, and dyspnea. Escalate to Emergency Care if red flags present."
+  },
+  {
+    "id": "fever-001",
+    "symptom": "fever",
+    "category": "general",
+    "department": "General Medicine",
+    "urgency_hints": ["medium", "high"],
+    "clarifying_questions": [
+      "What is your current temperature if known?",
+      "How long have you had the fever?",
+      "Do you have chills, rash, or stiff neck?"
+    ],
+    "red_flags": ["fever with stiff neck", "high fever over 103F with confusion"],
+    "guideline": "Fever evaluation requires duration, associated symptoms, and immunocompromised status assessment."
+  },
+  {
+    "id": "headache-001",
+    "symptom": "headache",
+    "category": "neurological",
+    "department": "Neurology",
+    "urgency_hints": ["medium", "urgent"],
+    "clarifying_questions": [
+      "Do you have dizziness or blurred vision?",
+      "Is this the worst headache of your life?",
+      "Any weakness, numbness, or speech difficulty?"
+    ],
+    "red_flags": ["thunderclap headache", "headache with vision loss", "stroke symptoms"],
+    "guideline": "Sudden severe headache or neurological deficits require urgent neurology or emergency evaluation."
+  },
+  {
+    "id": "breathing-001",
+    "symptom": "shortness of breath",
+    "category": "respiratory",
+    "department": "Pulmonology",
+    "urgency_hints": ["high", "emergency"],
+    "clarifying_questions": [
+      "When did the breathing difficulty start?",
+      "Are you wheezing or unable to speak full sentences?",
+      "Any chest pain with the breathing difficulty?"
+    ],
+    "red_flags": ["severe dyspnea", "blue lips", "unable to speak"],
+    "guideline": "Acute dyspnea is high priority. Consider pulmonary embolism, asthma exacerbation, or cardiac causes."
+  },
+  {
+    "id": "mental-health-001",
+    "symptom": "anxiety depression suicidal",
+    "category": "psychiatric",
+    "department": "Psychiatry",
+    "urgency_hints": ["high", "emergency"],
+    "clarifying_questions": [
+      "Are you having thoughts of harming yourself or others?",
+      "Do you feel safe right now?"
+    ],
+    "red_flags": ["active suicidal ideation", "plan to harm"],
+    "guideline": "Suicidal ideation requires immediate psychiatric emergency assessment."
+  },
+  {
+    "id": "skin-001",
+    "symptom": "rash itching skin lesion",
+    "category": "dermatology",
+    "department": "Dermatology",
+    "urgency_hints": ["low", "medium"],
+    "clarifying_questions": [
+      "When did the rash appear?",
+      "Is there swelling of face or lips?",
+      "Any fever with the rash?"
+    ],
+    "red_flags": ["rash with facial swelling", "difficulty breathing with rash"],
+    "guideline": "Rash with angioedema or systemic symptoms may indicate anaphylaxis — emergency escalation."
+  },
+  {
+    "id": "ortho-001",
+    "symptom": "joint pain fracture injury swelling",
+    "category": "musculoskeletal",
+    "department": "Orthopedics",
+    "urgency_hints": ["medium", "high"],
+    "clarifying_questions": [
+      "Was there a recent injury or fall?",
+      "Can you bear weight on the affected area?",
+      "Is there visible deformity?"
+    ],
+    "red_flags": ["open fracture", "loss of pulse distal to injury"],
+    "guideline": "Traumatic injury with neurovascular compromise requires urgent orthopedic evaluation."
+  },
+  {
+    "id": "ent-001",
+    "symptom": "sore throat ear pain hearing loss",
+    "category": "ent",
+    "department": "ENT",
+    "urgency_hints": ["low", "medium"],
+    "clarifying_questions": [
+      "How long have you had throat or ear symptoms?",
+      "Any difficulty swallowing or breathing?",
+      "Fever associated?"
+    ],
+    "red_flags": ["stridor", "drooling with sore throat"],
+    "guideline": "Airway compromise signs in ENT presentations require emergency care."
+  },
+  {
+    "id": "stroke-001",
+    "symptom": "facial droop weakness speech slurred",
+    "category": "neurological",
+    "department": "Emergency Care",
+    "urgency_hints": ["emergency"],
+    "clarifying_questions": [
+      "When did symptoms start?",
+      "Any facial drooping or arm weakness?",
+      "Difficulty speaking or understanding?"
+    ],
+    "red_flags": ["FAST positive", "sudden unilateral weakness"],
+    "guideline": "Suspected stroke — immediate emergency activation. Time-critical intervention window."
+  },
+  {
+    "id": "abdominal-pain-001",
+    "symptom": "abdominal pain stomach ache vomiting nausea bloating",
+    "category": "gastrointestinal",
+    "department": "General Medicine",
+    "urgency_hints": ["medium", "high"],
+    "clarifying_questions": [
+      "Where is the pain located and is it sharp or dull?",
+      "Are you vomiting blood or have black, tarry stools?",
+      "Do you have a high fever or severe abdominal swelling?"
+    ],
+    "red_flags": ["severe rigid abdomen", "vomiting blood", "black tarry stools", "sudden severe right lower quadrant pain"],
+    "guideline": "Abdominal pain evaluation must rule out acute abdomen. Assess for signs of peritonitis, gastrointestinal bleeding, or appendicitis. Escalate to Emergency Care if red flags present."
+  },
+  {
+    "id": "pediatric-fever-001",
+    "symptom": "baby child kid infant toddler fever lethargy",
+    "category": "pediatrics",
+    "department": "General Medicine",
+    "urgency_hints": ["high", "urgent"],
+    "clarifying_questions": [
+      "What is the child's age in months and their current temperature?",
+      "Is the child responsive, drinking fluids, or extremely lethargic?",
+      "Do they have a stiff neck, persistent vomiting, or an unexplained rash?"
+    ],
+    "red_flags": ["infant under 3 months with fever over 100.4F", "extreme lethargy or difficulty waking", "fever with purple spots on skin"],
+    "guideline": "Pediatric fever requires age-based stratification. Neonates with fever require immediate emergency workup for sepsis. Evaluate hydration and responsiveness."
+  },
+  {
+    "id": "allergic-reaction-001",
+    "symptom": "allergic reaction hives itching swelling red spots",
+    "category": "immunology",
+    "department": "Dermatology",
+    "urgency_hints": ["low", "medium"],
+    "clarifying_questions": [
+      "Are you experiencing any throat tightness or difficulty breathing?",
+      "Is there swelling of your face, lips, tongue, or eyes?",
+      "Have you been exposed to a known allergen like nuts, shellfish, or medication?"
+    ],
+    "red_flags": ["throat swelling", "difficulty breathing or wheezing", "dizziness or lightheadedness"],
+    "guideline": "Assess mild allergic reactions for signs of systemic anaphylaxis. Mild hives and localized pruritus are low/medium risk. Airway/lip swelling mandates immediate epinephrine and ER."
+  },
+  {
+    "id": "uti-pain-001",
+    "symptom": "burning urination frequent urinating bladder pelvic pain",
+    "category": "urology",
+    "department": "General Medicine",
+    "urgency_hints": ["medium"],
+    "clarifying_questions": [
+      "Do you have a fever, chills, or lower back/flank pain?",
+      "Is there blood in your urine or a foul odor?",
+      "Have you had similar urinary tract infections in the past?"
+    ],
+    "red_flags": ["fever with flank pain", "inability to urinate", "severe confusion in elderly patients"],
+    "guideline": "Urinary symptoms warrant urinalysis. Flank pain and fever suggest pyelonephritis (kidney infection) requiring expedited antibiotic treatment."
+  },
+  {
+    "id": "pregnancy-bleeding-001",
+    "symptom": "pregnancy bleeding cramping severe pelvic pain pregnant",
+    "category": "obgyn",
+    "department": "General Medicine",
+    "urgency_hints": ["high", "urgent"],
+    "clarifying_questions": [
+      "How many weeks pregnant are you, and how heavy is the bleeding?",
+      "Are you experiencing severe sharp one-sided abdominal pain?",
+      "Do you feel lightheaded, dizzy, or faint?"
+    ],
+    "red_flags": ["heavy vaginal bleeding", "severe sharp lower abdominal pain", "shoulder tip pain"],
+    "guideline": "Vaginal bleeding or severe pain in pregnancy warrants urgent OBGYN review to rule out ectopic pregnancy, miscarriage, or placental abruption."
+  },
+  {
+    "id": "eye-injury-001",
+    "symptom": "eye pain vision loss chemical splash blurry vision",
+    "category": "ophthalmology",
+    "department": "General Medicine",
+    "urgency_hints": ["urgent", "emergency"],
+    "clarifying_questions": [
+      "Was there a chemical splash, foreign object, or physical trauma to the eye?",
+      "Are you experiencing sudden partial or complete loss of vision?",
+      "Is there severe redness, swelling, or sticky discharge?"
+    ],
+    "red_flags": ["sudden vision loss", "chemical splash in eye", "penetrating eye injury", "severe pain with halo vision"],
+    "guideline": "Ophthalmic emergencies require rapid intervention. Chemical splashes require immediate copious irrigation before examination. Vision loss requires urgent specialist referral."
+  }
+]
