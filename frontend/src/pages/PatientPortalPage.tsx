@@ -3,7 +3,7 @@ import { api } from '../api/client';
 import type { PatientAccount } from '../api/client';
 import {
   User, Phone, LogIn, Clock, AlertTriangle, CheckCircle2,
-  FileText, ArrowLeft, Pill, Stethoscope
+  FileText, ArrowLeft, Pill, Stethoscope, Eye
 } from 'lucide-react';
 
 interface VisitRecord {
@@ -17,6 +17,8 @@ interface VisitRecord {
   doctorSuggestion: any;
   treatmentPlan: string[] | null;
   approvalStatus: string;
+  doctorViewed: boolean;
+  doctorViewedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -124,10 +126,6 @@ export default function PatientPortalPage() {
   }
 
   // Dashboard screen
-  const conditions = JSON.parse(patient.existing_conditions || '[]');
-  const medications = JSON.parse(patient.medications || '[]');
-  const allergies = JSON.parse(patient.allergies || '[]');
-
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
       {/* Header */}
@@ -142,40 +140,6 @@ export default function PatientPortalPage() {
         >
           <ArrowLeft className="w-4 h-4" /> Sign Out
         </button>
-      </div>
-
-      {/* Profile Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl border p-4 space-y-2">
-          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Existing Conditions</h4>
-          {conditions.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {conditions.map((c: string) => (
-                <span key={c} className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold">{c}</span>
-              ))}
-            </div>
-          ) : <span className="text-xs text-slate-400">None recorded</span>}
-        </div>
-        <div className="bg-white rounded-2xl border p-4 space-y-2">
-          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Medications</h4>
-          {medications.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {medications.map((m: string) => (
-                <span key={m} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-semibold">{m}</span>
-              ))}
-            </div>
-          ) : <span className="text-xs text-slate-400">None recorded</span>}
-        </div>
-        <div className="bg-white rounded-2xl border p-4 space-y-2">
-          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Allergies</h4>
-          {allergies.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {allergies.map((a: string) => (
-                <span key={a} className="text-xs bg-red-50 text-red-700 px-2 py-0.5 rounded font-semibold">{a}</span>
-              ))}
-            </div>
-          ) : <span className="text-xs text-slate-400">None recorded</span>}
-        </div>
       </div>
 
       {/* Visit History */}
@@ -208,6 +172,11 @@ export default function PatientPortalPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {visit.doctorViewed && (
+                      <span className="text-[9px] font-bold bg-teal-50 text-teal-700 border border-teal-200 px-2 py-0.5 rounded flex items-center gap-1">
+                        <Eye className="w-3 h-3" /> Doctor Reviewed
+                      </span>
+                    )}
                     {visit.triage && (
                       <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
                         {visit.triage.department}

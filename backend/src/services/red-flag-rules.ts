@@ -88,8 +88,29 @@ const RED_FLAG_PATTERNS: Array<{
     patterns: [/difficulty\s*breathing|shortness\s*of\s*breath|dyspnea/i],
     flag: 'breathing_difficulty',
     urgency: 'high',
-    department: 'Pulmonology',
-    reason: 'Respiratory symptoms require pulmonology assessment',
+    department: 'Emergency Care',
+    reason: 'Respiratory symptoms require emergency assessment',
+  },
+  {
+    patterns: [/h[ae]matemesis|vomiting\s*blood|blood\s*in\s*(vomit|sputum)|coughing\s*blood|haemoptysis|hemoptysis/i],
+    flag: 'hematemesis',
+    urgency: 'emergency',
+    department: 'Emergency Care',
+    reason: 'Hematemesis (vomiting blood) or hemoptysis indicates potential GI bleed or pulmonary emergency — immediate intervention required',
+  },
+  {
+    patterns: [/severe\s*abdominal|excruciating\s*(stomach|abdomen|belly)|abdomen.*rigid|peritonitis/i],
+    flag: 'acute_abdomen',
+    urgency: 'emergency',
+    department: 'Emergency Care',
+    reason: 'Severe acute abdominal pain may indicate surgical emergency',
+  },
+  {
+    patterns: [/overdose|poisoning|ingested.*toxic|toxic.*ingestion/i],
+    flag: 'overdose_poisoning',
+    urgency: 'emergency',
+    department: 'Emergency Care',
+    reason: 'Suspected overdose or poisoning requires emergency toxicology care',
   },
 ];
 

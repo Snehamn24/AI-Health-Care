@@ -134,6 +134,7 @@ export function registerDoctor(
     hospital_location: doc.hospitalLocation,
     username: username.toLowerCase().trim(),
     password,
+    availability_status: 'available',
   });
 
   if (!success) {

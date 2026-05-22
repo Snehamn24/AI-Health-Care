@@ -6,8 +6,6 @@ import { LoginGate } from '../components/LoginGate';
 import {
   User,
   Stethoscope,
-  Building,
-  AlertOctagon,
   LogOut,
   ChevronRight,
   UserCheck,
@@ -28,7 +26,9 @@ import {
   HeartCrack,
   Clock,
   Sliders,
-  BrainCircuit
+  BrainCircuit,
+  Eye,
+  CheckSquare
 } from 'lucide-react';
 
 export default function DoctorDashboardPage() {
@@ -37,11 +37,7 @@ export default function DoctorDashboardPage() {
   const [sessions, setSessions] = useState<IntakeSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<IntakeSession | null>(null);
   
-  // Scoped Clinical Lists
-  const [appointments, setAppointments] = useState<any[]>([]);
-  const [emergencies, setEmergencies] = useState<any[]>([]);
-  const [patients, setPatients] = useState<any[]>([]);
-  const [followups, setFollowups] = useState<any[]>([]);
+  // Scoped Clinical Lists (used by loadClinicalRegistry)
   const [loadingClinical, setLoadingClinical] = useState(false);
 
   // Layout Tab State
@@ -58,8 +54,9 @@ export default function DoctorDashboardPage() {
   const [showSimPanel, setShowSimPanel] = useState(false);
   const [showHandoffModal, setShowHandoffModal] = useState(false);
   const [showVitalsModal, setShowVitalsModal] = useState(false);
-  const [selectedEmergencyCase, setSelectedEmergencyCase] = useState<any | null>(null);
+  const [selectedEmergencyCase, _setSelectedEmergencyCase] = useState<any | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
+  const [markingViewed, setMarkingViewed] = useState(false);
 
   // Change password state
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -166,16 +163,6 @@ export default function DoctorDashboardPage() {
     setActiveTab('dashboard');
   };
 
-  // Complete Followup task
-  const handleCompleteFollowup = (id: string, name: string) => {
-    setFollowups(prev => prev.filter(f => f.id !== id));
-    showToast(`Treatment check-in resolved for ${name}. Notification logged in patient history.`, 'success');
-  };
-
-  // Trigger patient announcement alert
-  const handlePagePatient = (patientName: string) => {
-    showToast(`📢 PAGING PATIENT: "${patientName}" please proceed to Floor ${currentDoc?.floor}, Room ${currentDoc?.room}.`, 'info');
-  };
 
   // Review and generate Gemini clinical treatment pathways
   const handleReviewAI = (patientName: string) => {
@@ -286,6 +273,24 @@ export default function DoctorDashboardPage() {
     showToast('Clinical treatment pathways successfully updated.', 'success');
   };
 
+  // Doctor marks patient as viewed
+  const handleMarkViewed = async () => {
+    if (!selectedSession) return;
+    setMarkingViewed(true);
+    try {
+      await api.markSessionViewed(selectedSession.id);
+      const updated = { ...selectedSession, doctorViewed: true, doctorViewedAt: new Date().toISOString() };
+      setSelectedSession(updated as any);
+      setSessions(prev => prev.map(s => s.id === updated.id ? (updated as any) : s));
+      showToast(`Patient record marked as reviewed. Patient portal updated.`, 'success');
+      loadClinicalRegistry(true);
+    } catch {
+      showToast('Failed to mark as viewed. Please try again.', 'error');
+    } finally {
+      setMarkingViewed(false);
+    }
+  };
+
   // Simulation Check-in triggers
   const handleSimulateCheckin = (type: 'emergency' | 'pediatric') => {
     const mockId = `sim-session-${Date.now()}`;
@@ -385,11 +390,6 @@ export default function DoctorDashboardPage() {
     );
   }
 
-  // Search filter patients
-  const filteredPatients = patients.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.condition.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <div className="min-h-[calc(100vh-65px)] flex bg-slate-50 text-slate-700 font-sans overflow-hidden">
@@ -1050,9 +1050,25 @@ export default function DoctorDashboardPage() {
                   Name: {selectedSession.profile?.name} • Age: {selectedSession.profile?.age} • Severity: {selectedSession.symptoms?.severity}
                 </p>
               </div>
-              <button onClick={() => setShowHandoffModal(false)} className="p-1 hover:bg-slate-100 rounded-lg">
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
+              <div className="flex items-center gap-2">
+                {(selectedSession as any).doctorViewed ? (
+                  <span className="text-[9px] font-black bg-teal-50 text-teal-700 border border-teal-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 uppercase">
+                    <Eye className="w-3.5 h-3.5" /> Marked Viewed
+                  </span>
+                ) : (
+                  <button
+                    onClick={handleMarkViewed}
+                    disabled={markingViewed}
+                    className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all disabled:opacity-50"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    {markingViewed ? 'Marking...' : 'Mark as Viewed'}
+                  </button>
+                )}
+                <button onClick={() => setShowHandoffModal(false)} className="p-1 hover:bg-slate-100 rounded-lg">
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
             </div>
 
             {/* AI Diagnostics Summary */}

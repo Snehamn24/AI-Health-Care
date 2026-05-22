@@ -305,6 +305,7 @@ function demoSymptomAnalysis(message: string) {
   if (/fever|temperature|chills/.test(lower)) symptoms.push('fever');
   if (/headache|head\s*ache|migraine/.test(lower)) symptoms.push('headache');
   if (/breath|breathing|dyspnea|wheez/.test(lower)) symptoms.push('shortness of breath');
+  if (/h[ae]matemesis|vomiting\s*blood|blood.*vomit|coughing\s*blood|haemoptysis|hemoptysis/.test(lower)) symptoms.push('hematemesis');
   if (/rash|itch|skin|hives|eczema/.test(lower)) symptoms.push('skin rash');
   if (/joint|knee|ankle|fracture|sprain/.test(lower)) symptoms.push('joint pain');
   if (/leg\s*pain|leg\s*ache|calf|thigh|shin/.test(lower)) symptoms.push('leg pain');
@@ -322,6 +323,7 @@ function demoSymptomAnalysis(message: string) {
   if (/eye|vision|blur|sight/.test(lower)) symptoms.push('vision problems');
   if (/dizz|vertigo|faint|lightheaded/.test(lower)) symptoms.push('dizziness');
   if (/urin|bladder|kidney/.test(lower)) symptoms.push('urinary issues');
+  if (/overdose|poison|toxic\s*ingestion/.test(lower)) symptoms.push('suspected poisoning');
   if (/pain/.test(lower) && symptoms.length === 0) symptoms.push('body pain');
   if (symptoms.length === 0) symptoms.push('general discomfort');
 
@@ -354,7 +356,8 @@ function demoStructuredIntake(symptoms: SymptomData) {
   const list = symptoms.symptoms.length ? symptoms.symptoms : ['general symptoms'];
   const combined = list.join(' ').toLowerCase();
   let dept: Department = 'General Medicine';
-  if (/chest|heart|palpitation/.test(combined)) dept = 'Cardiology';
+  if (/h[ae]matemesis|vomiting\s*blood|blood.*vomit|coughing\s*blood|haemoptysis|hemoptysis|overdose|poison|severe\s*abdominal/.test(combined)) dept = 'Emergency Care';
+  else if (/chest|heart|palpitation/.test(combined)) dept = 'Cardiology';
   else if (/headache|migraine|dizz|vertigo|vision|weak|seizure/.test(combined)) dept = 'Neurology';
   else if (/breath|lung|wheez|cough|asthma|copd/.test(combined)) dept = 'Pulmonology';
   else if (/joint|bone|fracture|leg\s*pain|back\s*pain|knee|ankle|spine|lumbar|shoulder|arm\s*pain|neck\s*pain|sprain|body\s*pain/.test(combined)) dept = 'Orthopedics';
@@ -384,6 +387,11 @@ function demoTriageLLM(symptoms: string[], redFlags: string[]) {
     };
   }
   const text = symptoms.join(' ').toLowerCase();
+  // Emergency conditions — check first
+  if (/h[ae]matemesis|vomiting\s*blood|blood.*vomit|coughing\s*blood|haemoptysis|hemoptysis/.test(text))
+    return { urgency: 'emergency' as UrgencyLevel, department: 'Emergency Care' as Department, reasoning: 'Hematemesis or hemoptysis indicates active bleeding emergency requiring immediate intervention.', confidence: 0.97 };
+  if (/overdose|poison|toxic/.test(text))
+    return { urgency: 'emergency' as UrgencyLevel, department: 'Emergency Care' as Department, reasoning: 'Suspected poisoning or overdose requires emergency toxicology response.', confidence: 0.95 };
   if (/chest|heart|palpitation/.test(text))
     return { urgency: 'high' as UrgencyLevel, department: 'Cardiology' as Department, reasoning: 'Cardiac-related symptoms warrant expedited cardiology review.', confidence: 0.85 };
   if (/headache|migraine|dizz|vertigo|vision|seizure/.test(text))

@@ -22,7 +22,8 @@ import {
   TrendingUp,
   Database,
   Server,
-  Terminal
+  Terminal,
+  Eye
 } from 'lucide-react';
 
 
@@ -503,6 +504,11 @@ export default function DashboardPage() {
                             approval === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' :
                             'bg-amber-50 text-amber-700 border-amber-200'
                           }`}>{approval}</span>
+                          {(s as any).doctorViewed && (
+                            <span className="text-[9px] font-black bg-teal-50 text-teal-700 border border-teal-200 px-2.5 py-0.5 rounded flex items-center gap-1 uppercase">
+                              <Eye className="w-3 h-3" /> Dr. Viewed
+                            </span>
+                          )}
                         </div>
                       </div>
 

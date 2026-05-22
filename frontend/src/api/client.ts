@@ -178,6 +178,12 @@ export const api = {
       body: JSON.stringify({ status }),
     }),
 
+  // Doctor marks patient as viewed
+  markSessionViewed: (sessionId: string) =>
+    request<{ success: boolean }>(`/sessions/${sessionId}/mark-viewed`, {
+      method: 'PATCH',
+    }),
+
   // Doctor change password
   changeDoctorPassword: (doctorId: string, currentPassword: string, newPassword: string) =>
     request<{ success: boolean; error?: string }>('/doctor/change-password', {

@@ -24,6 +24,8 @@ function sessionToDb(session: IntakeSession): DbSession {
     treatment_plan_json: session.treatmentPlan ? JSON.stringify(session.treatmentPlan) : null,
     fields_collected_json: JSON.stringify(session.fieldsCollected || []),
     approval_status: (session as any).approvalStatus || 'pending',
+    doctor_viewed: (session as any).doctorViewed ? 1 : 0,
+    doctor_viewed_at: (session as any).doctorViewedAt || null,
     created_at: session.createdAt,
     updated_at: session.updatedAt,
   };

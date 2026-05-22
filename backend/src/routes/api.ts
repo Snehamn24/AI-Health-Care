@@ -17,7 +17,8 @@ import {
 import {
   dbGetPatientByPhone, dbInsertPatient, dbGetPatientById, dbUpdatePatient,
   dbGetSessionsByPatient, dbUpdateSessionApproval, dbLinkSessionToPatient,
-  dbGetStats, getAdminSetting, dbGetSessionsByDepartment, dbGetDepartmentStats
+  dbGetStats, getAdminSetting, dbGetSessionsByDepartment, dbGetDepartmentStats,
+  dbMarkSessionViewed
 } from '../services/database.js';
 import { v4 as uuidv4 } from 'uuid';
 import type { Department } from '../types/index.js';
@@ -66,6 +67,7 @@ apiRouter.post('/admin/register-doctor', (req, res) => {
         floor: floor || 1,
         room: room || 'TBD',
         hospitalLocation: hospitalLocation || 'Main Building',
+        availabilityStatus: 'available',
       },
       username,
       password
@@ -103,6 +105,8 @@ apiRouter.get('/sessions/by-department', (req, res) => {
     structuredIntake: s.structured_intake_json ? JSON.parse(s.structured_intake_json) : null,
     treatmentPlan: s.treatment_plan_json ? JSON.parse(s.treatment_plan_json) : null,
     approvalStatus: s.approval_status,
+    doctorViewed: !!s.doctor_viewed,
+    doctorViewedAt: s.doctor_viewed_at || null,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
   }));
@@ -414,6 +418,8 @@ apiRouter.get('/patient/:id/history', (req, res) => {
       doctorSuggestion: s.doctor_suggestion_json ? JSON.parse(s.doctor_suggestion_json) : null,
       treatmentPlan: s.treatment_plan_json ? JSON.parse(s.treatment_plan_json) : null,
       approvalStatus: s.approval_status,
+      doctorViewed: !!s.doctor_viewed,
+      doctorViewedAt: s.doctor_viewed_at || null,
       createdAt: s.created_at,
       updatedAt: s.updated_at,
     }));
@@ -447,6 +453,17 @@ apiRouter.patch('/sessions/:id/approve', (req, res) => {
       return res.status(400).json({ success: false, error: 'Status must be "approved" or "rejected"' });
     }
     const updated = dbUpdateSessionApproval(req.params.id, status);
+    res.json({ success: updated });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
+// ─── Doctor Mark as Viewed ───
+
+apiRouter.patch('/sessions/:id/mark-viewed', (req, res) => {
+  try {
+    const updated = dbMarkSessionViewed(req.params.id);
     res.json({ success: updated });
   } catch (e) {
     res.status(500).json({ success: false, error: (e as Error).message });

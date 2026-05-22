@@ -24,18 +24,18 @@ export function seedDatabase(): void {
   const existingDocs = dbGetDoctors();
   if (existingDocs.length === 0) {
     const doctors = [
-      { id: 'doc-1', name: 'Dr. Sarah Jenkins', department: 'Cardiology', specialty: 'Interventional Cardiology', floor: 3, room: '305', hospital_location: 'Building C, Wing 3', username: 'sarah', password: 'password' },
-      { id: 'doc-2', name: 'Dr. Alan Turing', department: 'Neurology', specialty: 'Clinical Neurology & Neurogenetics', floor: 4, room: '412', hospital_location: 'Building B, Wing 4', username: 'alan', password: 'password' },
-      { id: 'doc-3', name: 'Dr. Marcus Welby', department: 'Orthopedics', specialty: 'Orthopedic Surgery & Joint Reconstruction', floor: 2, room: '204', hospital_location: 'Building A, Wing 2', username: 'marcus', password: 'password' },
-      { id: 'doc-4', name: 'Dr. Elizabeth Blackwell', department: 'Pulmonology', specialty: 'Pulmonary & Critical Care Medicine', floor: 3, room: '318', hospital_location: 'Building C, Wing 3', username: 'elizabeth', password: 'password' },
-      { id: 'doc-5', name: 'Dr. Gregory House', department: 'Dermatology', specialty: 'Clinical Dermatology & Diagnostic Pathology', floor: 2, room: '221', hospital_location: 'Building B, Wing 2', username: 'gregory', password: 'password' },
-      { id: 'doc-6', name: 'Dr. Fiona Gallagher', department: 'ENT', specialty: 'Otolaryngology & Throat Care', floor: 1, room: '145', hospital_location: 'Building A, Wing 1', username: 'fiona', password: 'password' },
-      { id: 'doc-7', name: 'Dr. Sigmund Freud', department: 'Psychiatry', specialty: 'Clinical Psychiatry & Psychotherapy', floor: 5, room: '501', hospital_location: 'Building D, Wing 5', username: 'sigmund', password: 'password' },
-      { id: 'doc-8', name: 'Dr. John Carter', department: 'Emergency Care', specialty: 'Emergency Medicine & Trauma', floor: 1, room: 'ER-1', hospital_location: 'Emergency Care Pavilion, Ground Floor', username: 'john', password: 'password' },
-      { id: 'doc-9', name: 'Dr. Robert Chen', department: 'General Medicine', specialty: 'Family & Internal Medicine', floor: 1, room: '102', hospital_location: 'Building A, Ground Floor', username: 'robert', password: 'password' },
-      { id: 'doc-10', name: 'Dr. Emily Torres', department: 'Pediatrics', specialty: 'Pediatric General Medicine', floor: 2, room: '210', hospital_location: 'Building A, Wing 2', username: 'emily', password: 'password' },
-      { id: 'doc-11', name: 'Dr. Michael Chen', department: 'Gastroenterology', specialty: 'Hepatology & GI Disorders', floor: 3, room: '330', hospital_location: 'Building C, Wing 3', username: 'michael', password: 'password' },
-      { id: 'doc-12', name: 'Dr. Robert Fox', department: 'Oncology', specialty: 'Medical Oncology & Hematology', floor: 5, room: '505', hospital_location: 'Building D, Wing 5', username: 'fox', password: 'password' },
+      { id: 'doc-1', name: 'Dr. Sarah Jenkins', department: 'Cardiology', specialty: 'Interventional Cardiology', floor: 3, room: '305', hospital_location: 'Building C, Wing 3', username: 'sarah', password: 'password', availability_status: 'available' },
+      { id: 'doc-2', name: 'Dr. Alan Turing', department: 'Neurology', specialty: 'Clinical Neurology & Neurogenetics', floor: 4, room: '412', hospital_location: 'Building B, Wing 4', username: 'alan', password: 'password', availability_status: 'available' },
+      { id: 'doc-3', name: 'Dr. Marcus Welby', department: 'Orthopedics', specialty: 'Orthopedic Surgery & Joint Reconstruction', floor: 2, room: '204', hospital_location: 'Building A, Wing 2', username: 'marcus', password: 'password', availability_status: 'available' },
+      { id: 'doc-4', name: 'Dr. Elizabeth Blackwell', department: 'Pulmonology', specialty: 'Pulmonary & Critical Care Medicine', floor: 3, room: '318', hospital_location: 'Building C, Wing 3', username: 'elizabeth', password: 'password', availability_status: 'available' },
+      { id: 'doc-5', name: 'Dr. Gregory House', department: 'Dermatology', specialty: 'Clinical Dermatology & Diagnostic Pathology', floor: 2, room: '221', hospital_location: 'Building B, Wing 2', username: 'gregory', password: 'password', availability_status: 'available' },
+      { id: 'doc-6', name: 'Dr. Fiona Gallagher', department: 'ENT', specialty: 'Otolaryngology & Throat Care', floor: 1, room: '145', hospital_location: 'Building A, Wing 1', username: 'fiona', password: 'password', availability_status: 'available' },
+      { id: 'doc-7', name: 'Dr. Sigmund Freud', department: 'Psychiatry', specialty: 'Clinical Psychiatry & Psychotherapy', floor: 5, room: '501', hospital_location: 'Building D, Wing 5', username: 'sigmund', password: 'password', availability_status: 'available' },
+      { id: 'doc-8', name: 'Dr. John Carter', department: 'Emergency Care', specialty: 'Emergency Medicine & Trauma', floor: 1, room: 'ER-1', hospital_location: 'Emergency Care Pavilion, Ground Floor', username: 'john', password: 'password', availability_status: 'available' },
+      { id: 'doc-9', name: 'Dr. Robert Chen', department: 'General Medicine', specialty: 'Family & Internal Medicine', floor: 1, room: '102', hospital_location: 'Building A, Ground Floor', username: 'robert', password: 'password', availability_status: 'available' },
+      { id: 'doc-10', name: 'Dr. Emily Torres', department: 'Pediatrics', specialty: 'Pediatric General Medicine', floor: 2, room: '210', hospital_location: 'Building A, Wing 2', username: 'emily', password: 'password', availability_status: 'available' },
+      { id: 'doc-11', name: 'Dr. Michael Chen', department: 'Gastroenterology', specialty: 'Hepatology & GI Disorders', floor: 3, room: '330', hospital_location: 'Building C, Wing 3', username: 'michael', password: 'password', availability_status: 'available' },
+      { id: 'doc-12', name: 'Dr. Robert Fox', department: 'Oncology', specialty: 'Medical Oncology & Hematology', floor: 5, room: '505', hospital_location: 'Building D, Wing 5', username: 'fox', password: 'password', availability_status: 'available' },
     ];
     for (const doc of doctors) {
       dbInsertDoctor(doc);
@@ -182,6 +182,8 @@ export function seedDatabase(): void {
         treatment_plan_json: null,
         fields_collected_json: JSON.stringify(['name']),
         approval_status: s.status,
+        doctor_viewed: 0,
+        doctor_viewed_at: null,
         created_at: created,
         updated_at: created,
       });
