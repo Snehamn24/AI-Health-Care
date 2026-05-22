@@ -215,4 +215,22 @@ export const api = {
   // Department stats (real patient counts per department)
   getDepartmentStats: () =>
     request<{ department: string; patientCount: number; approvedCount: number; pendingCount: number; emergencyCount: number }[]>('/admin/department-stats'),
+
+  // Complete consultation: generate + save prescription and clinical notes
+  completeConsultation: (
+    sessionId: string,
+    payload: {
+      conditionVerified: string;
+      medicines: { name: string; dose: string; frequency: string; duration: string; instructions?: string }[];
+      followUpDate: string | null;
+      doctorName: string;
+      department: string;
+      additionalNotes: string;
+    }
+  ) =>
+    request<{ success: boolean; prescription: any; clinicalNotes: any }>(`/sessions/${sessionId}/complete-consultation`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
+

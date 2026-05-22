@@ -60,6 +60,8 @@ db.exec(`
     approval_status TEXT DEFAULT 'pending',
     doctor_viewed INTEGER DEFAULT 0,
     doctor_viewed_at TEXT,
+    prescription_json TEXT,
+    clinical_notes_json TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (patient_id) REFERENCES patients(id)
@@ -89,6 +91,14 @@ try {
 } catch {
   // Column already exists
 }
+
+// Migration: add prescription and clinical notes columns if missing
+try {
+  db.exec(`ALTER TABLE sessions ADD COLUMN prescription_json TEXT`);
+} catch { /* already exists */ }
+try {
+  db.exec(`ALTER TABLE sessions ADD COLUMN clinical_notes_json TEXT`);
+} catch { /* already exists */ }
 
 // ─── Admin Settings ───
 
@@ -265,6 +275,8 @@ export interface DbSession {
   approval_status: string;
   doctor_viewed: number;
   doctor_viewed_at: string | null;
+  prescription_json: string | null;
+  clinical_notes_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -275,16 +287,29 @@ export function dbInsertSession(session: DbSession): void {
       (id, patient_id, phase, profile_json, symptoms_json, messages_json,
        structured_intake_json, triage_json, clinician_handoff_json,
        doctor_suggestion_json, treatment_plan_json, fields_collected_json,
-       approval_status, doctor_viewed, doctor_viewed_at, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       approval_status, doctor_viewed, doctor_viewed_at,
+       prescription_json, clinical_notes_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     session.id, session.patient_id, session.phase,
     session.profile_json, session.symptoms_json, session.messages_json,
     session.structured_intake_json, session.triage_json, session.clinician_handoff_json,
     session.doctor_suggestion_json, session.treatment_plan_json, session.fields_collected_json,
     session.approval_status, session.doctor_viewed ?? 0, session.doctor_viewed_at ?? null,
+    session.prescription_json ?? null, session.clinical_notes_json ?? null,
     session.created_at, session.updated_at
   );
+}
+
+export function dbSaveConsultation(
+  sessionId: string,
+  prescriptionJson: string,
+  clinicalNotesJson: string
+): boolean {
+  const info = db.prepare(
+    `UPDATE sessions SET prescription_json = ?, clinical_notes_json = ?, updated_at = datetime('now') WHERE id = ?`
+  ).run(prescriptionJson, clinicalNotesJson, sessionId);
+  return info.changes > 0;
 }
 
 export function dbMarkSessionViewed(sessionId: string): boolean {

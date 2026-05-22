@@ -3,7 +3,7 @@ import { api } from '../api/client';
 import type { PatientAccount } from '../api/client';
 import {
   User, Phone, LogIn, Clock, AlertTriangle, CheckCircle2,
-  FileText, ArrowLeft, Pill, Stethoscope, Eye
+  FileText, ArrowLeft, Pill, Stethoscope, Eye, Calendar, ClipboardList
 } from 'lucide-react';
 
 interface VisitRecord {
@@ -19,6 +19,24 @@ interface VisitRecord {
   approvalStatus: string;
   doctorViewed: boolean;
   doctorViewedAt: string | null;
+  prescription: {
+    doctorName: string;
+    department: string;
+    date: string;
+    medicines: { name: string; dose: string; frequency: string; duration: string; instructions?: string }[];
+    generalInstructions: string;
+    generatedAt: string;
+  } | null;
+  clinicalNotes: {
+    patientSummary: string;
+    conditionVerified: string;
+    followUpRequired: boolean;
+    followUpDate: string | null;
+    followUpReason: string | null;
+    priority: string;
+    additionalNotes: string;
+    completedAt: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -253,6 +271,53 @@ export default function PatientPortalPage() {
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Prescription Card — visible to patient after consultation */}
+                    {visit.prescription && (
+                      <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 space-y-3">
+                        <h5 className="text-[11px] font-black text-emerald-800 uppercase flex items-center gap-1.5">
+                          <Pill className="w-3.5 h-3.5 text-emerald-600" /> Prescription
+                          <span className="ml-auto text-[9px] font-bold text-emerald-600 normal-case">Dr. {visit.prescription.doctorName} • {visit.prescription.date}</span>
+                        </h5>
+                        {/* Medicines Table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-emerald-200">
+                                <th className="text-left text-[9px] font-black text-emerald-700 uppercase py-1 pr-2">Medicine</th>
+                                <th className="text-left text-[9px] font-black text-emerald-700 uppercase py-1 pr-2">Dose</th>
+                                <th className="text-left text-[9px] font-black text-emerald-700 uppercase py-1 pr-2">Frequency</th>
+                                <th className="text-left text-[9px] font-black text-emerald-700 uppercase py-1">Duration</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-emerald-100">
+                              {visit.prescription.medicines.map((med: any, i: number) => (
+                                <tr key={i}>
+                                  <td className="py-1.5 pr-2 font-bold text-slate-800">{med.name}</td>
+                                  <td className="py-1.5 pr-2 text-slate-600">{med.dose}</td>
+                                  <td className="py-1.5 pr-2 text-slate-600">{med.frequency}</td>
+                                  <td className="py-1.5 text-slate-600">{med.duration}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {visit.prescription.generalInstructions && (
+                          <p className="text-[10px] text-emerald-800 font-semibold bg-emerald-100/60 px-3 py-2 rounded-lg">
+                            📋 {visit.prescription.generalInstructions}
+                          </p>
+                        )}
+                        {/* Follow-up Date */}
+                        {visit.clinicalNotes?.followUpRequired && visit.clinicalNotes?.followUpDate && (
+                          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                            <Calendar className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <p className="text-[10px] font-bold text-amber-800">
+                              Next Follow-up: <span className="font-black">{new Date(visit.clinicalNotes.followUpDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 

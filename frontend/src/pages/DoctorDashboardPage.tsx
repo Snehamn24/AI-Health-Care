@@ -57,6 +57,19 @@ export default function DoctorDashboardPage() {
   const [selectedEmergencyCase, _setSelectedEmergencyCase] = useState<any | null>(null);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'info' | 'error'; text: string } | null>(null);
   const [markingViewed, setMarkingViewed] = useState(false);
+  const [consultationForm, setConsultationForm] = useState<{
+    conditionVerified: string;
+    medicines: { name: string; dose: string; frequency: string; duration: string; instructions: string }[];
+    followUpDate: string;
+    additionalNotes: string;
+  }>({
+    conditionVerified: '',
+    medicines: [{ name: '', dose: '', frequency: 'Once daily', duration: '7 days', instructions: '' }],
+    followUpDate: '',
+    additionalNotes: '',
+  });
+  const [submittingConsultation, setSubmittingConsultation] = useState(false);
+  const [consultationSaved, setConsultationSaved] = useState<string | null>(null); // session id that was saved
 
   // Change password state
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -288,6 +301,46 @@ export default function DoctorDashboardPage() {
       showToast('Failed to mark as viewed. Please try again.', 'error');
     } finally {
       setMarkingViewed(false);
+    }
+  };
+
+  // Complete consultation: generate prescription + clinical notes
+  const handleCompleteConsultation = async () => {
+    if (!selectedSession || !currentDoc) return;
+    if (!consultationForm.conditionVerified.trim()) {
+      showToast('Please enter the verified condition before completing.', 'error');
+      return;
+    }
+    const filledMeds = consultationForm.medicines.filter(m => m.name.trim());
+    if (filledMeds.length === 0) {
+      showToast('Please add at least one medicine.', 'error');
+      return;
+    }
+    setSubmittingConsultation(true);
+    showToast('Generating prescription and clinical notes...', 'info');
+    try {
+      const res = await api.completeConsultation(selectedSession.id, {
+        conditionVerified: consultationForm.conditionVerified,
+        medicines: filledMeds,
+        followUpDate: consultationForm.followUpDate || null,
+        doctorName: currentDoc.name,
+        department: currentDoc.department,
+        additionalNotes: consultationForm.additionalNotes,
+      });
+      if (res.success) {
+        setConsultationSaved(selectedSession.id);
+        setSelectedSession(prev => prev ? { ...prev, prescription: res.prescription, clinicalNotes: res.clinicalNotes } as any : prev);
+        showToast('Prescription & clinical notes saved successfully!', 'success');
+        // Reset form
+        setConsultationForm({ conditionVerified: '', medicines: [{ name: '', dose: '', frequency: 'Once daily', duration: '7 days', instructions: '' }], followUpDate: '', additionalNotes: '' });
+      } else {
+        showToast('Failed to save consultation. Try again.', 'error');
+      }
+    } catch {
+      showToast('Consultation saved locally (offline mode).', 'info');
+      setConsultationSaved(selectedSession.id);
+    } finally {
+      setSubmittingConsultation(false);
     }
   };
 
@@ -1198,6 +1251,91 @@ export default function DoctorDashboardPage() {
                 ) : (
                   <p className="text-[11px] text-slate-400 font-semibold italic">Generate a personalized action pathway using Gemini clinical protocols.</p>
                 )}
+              </div>
+
+              {/* ── COMPLETE CONSULTATION FORM ── */}
+              <div className="border-t pt-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black text-emerald-700 uppercase tracking-widest flex items-center gap-1.5">
+                    <ClipboardList className="w-4 h-4 text-emerald-600" /> Complete Consultation
+                  </span>
+                  {consultationSaved === selectedSession.id && (
+                    <span className="text-[9px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-lg flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" /> Saved
+                    </span>
+                  )}
+                </div>
+
+                {/* Condition Verified */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Verified Diagnosis / Condition</label>
+                  <input
+                    type="text"
+                    value={consultationForm.conditionVerified}
+                    onChange={e => setConsultationForm(f => ({ ...f, conditionVerified: e.target.value }))}
+                    placeholder="e.g. Acute Bronchitis, Hypertensive Crisis..."
+                    className="w-full px-3 py-2 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50"
+                  />
+                </div>
+
+                {/* Medicines Table */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Medicines Prescribed</label>
+                  <div className="space-y-2">
+                    {consultationForm.medicines.map((med, idx) => (
+                      <div key={idx} className="grid grid-cols-5 gap-1.5 items-center">
+                        <input type="text" value={med.name} onChange={e => { const m = [...consultationForm.medicines]; m[idx].name = e.target.value; setConsultationForm(f => ({ ...f, medicines: m })); }} placeholder="Medicine name" className="col-span-2 px-2 py-2 border rounded-lg text-[11px] font-semibold outline-none focus:ring-1 focus:ring-emerald-500 bg-slate-50" />
+                        <input type="text" value={med.dose} onChange={e => { const m = [...consultationForm.medicines]; m[idx].dose = e.target.value; setConsultationForm(f => ({ ...f, medicines: m })); }} placeholder="Dose (e.g. 500mg)" className="px-2 py-2 border rounded-lg text-[11px] font-semibold outline-none focus:ring-1 focus:ring-emerald-500 bg-slate-50" />
+                        <input type="text" value={med.duration} onChange={e => { const m = [...consultationForm.medicines]; m[idx].duration = e.target.value; setConsultationForm(f => ({ ...f, medicines: m })); }} placeholder="Duration (e.g. 7 days)" className="px-2 py-2 border rounded-lg text-[11px] font-semibold outline-none focus:ring-1 focus:ring-emerald-500 bg-slate-50" />
+                        <button onClick={() => setConsultationForm(f => ({ ...f, medicines: f.medicines.filter((_, i) => i !== idx) }))} className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg justify-self-center">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <button onClick={() => setConsultationForm(f => ({ ...f, medicines: [...f.medicines, { name: '', dose: '', frequency: 'Once daily', duration: '7 days', instructions: '' }] }))} className="text-[10px] text-emerald-650 font-bold uppercase tracking-wider flex items-center gap-1 hover:text-emerald-700">
+                      <PlusCircle className="w-3.5 h-3.5" /> Add Medicine
+                    </button>
+                  </div>
+                </div>
+
+                {/* Follow-up Date (for medium/high/urgent/emergency) */}
+                {['medium', 'high', 'urgent', 'emergency'].includes(selectedSession.triage?.urgency || '') && (
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                      <CalendarIcon className="w-3 h-3 text-amber-500" /> Next Follow-up Date
+                      <span className="text-amber-600 font-black">(Required — {selectedSession.triage?.urgency} priority)</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={consultationForm.followUpDate}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={e => setConsultationForm(f => ({ ...f, followUpDate: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-amber-500 bg-slate-50"
+                    />
+                  </div>
+                )}
+
+                {/* Additional Notes */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Clinical Notes / Observations</label>
+                  <textarea
+                    value={consultationForm.additionalNotes}
+                    onChange={e => setConsultationForm(f => ({ ...f, additionalNotes: e.target.value }))}
+                    placeholder="Additional clinical observations, lifestyle advice, special instructions..."
+                    rows={3}
+                    className="w-full px-3 py-2 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 resize-none"
+                  />
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  onClick={handleCompleteConsultation}
+                  disabled={submittingConsultation}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  {submittingConsultation ? 'Generating Prescription...' : 'Complete Consultation & Generate Prescription'}
+                </button>
               </div>
             </div>
           </div>

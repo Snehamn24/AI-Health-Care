@@ -18,8 +18,9 @@ import {
   dbGetPatientByPhone, dbInsertPatient, dbGetPatientById, dbUpdatePatient,
   dbGetSessionsByPatient, dbUpdateSessionApproval, dbLinkSessionToPatient,
   dbGetStats, getAdminSetting, dbGetSessionsByDepartment, dbGetDepartmentStats,
-  dbMarkSessionViewed
+  dbMarkSessionViewed, dbSaveConsultation
 } from '../services/database.js';
+
 import { v4 as uuidv4 } from 'uuid';
 import type { Department } from '../types/index.js';
 
@@ -420,9 +421,12 @@ apiRouter.get('/patient/:id/history', (req, res) => {
       approvalStatus: s.approval_status,
       doctorViewed: !!s.doctor_viewed,
       doctorViewedAt: s.doctor_viewed_at || null,
+      prescription: s.prescription_json ? JSON.parse(s.prescription_json) : null,
+      clinicalNotes: s.clinical_notes_json ? JSON.parse(s.clinical_notes_json) : null,
       createdAt: s.created_at,
       updatedAt: s.updated_at,
     }));
+
     res.json(history);
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });
@@ -469,6 +473,57 @@ apiRouter.patch('/sessions/:id/mark-viewed', (req, res) => {
     res.status(500).json({ success: false, error: (e as Error).message });
   }
 });
+
+// ─── Complete Consultation: Generate Prescription + Clinical Notes ───
+
+apiRouter.post('/sessions/:id/complete-consultation', async (req, res) => {
+  try {
+    const { generatePrescriptionAndNotes } = await import('../services/gemini.js');
+    const { getSession } = await import('../services/firestore.js');
+
+    const session = await getSession(req.params.id);
+    if (!session) {
+      return res.status(404).json({ success: false, error: 'Session not found' });
+    }
+
+    const {
+      conditionVerified,
+      medicines,
+      followUpDate,
+      doctorName,
+      department,
+      additionalNotes,
+    } = req.body;
+
+    if (!conditionVerified || !medicines || !Array.isArray(medicines)) {
+      return res.status(400).json({ success: false, error: 'conditionVerified and medicines array are required' });
+    }
+
+    const result = await generatePrescriptionAndNotes({
+      patientProfile: session.profile,
+      symptoms: session.symptoms?.symptoms || [],
+      severity: session.symptoms?.severity || 'medium',
+      urgency: session.triage?.urgency || 'medium',
+      conditionVerified,
+      medicines,
+      followUpDate: followUpDate || null,
+      doctorName: doctorName || 'Attending Physician',
+      department: department || session.triage?.department || 'General Medicine',
+      additionalNotes: additionalNotes || '',
+    });
+
+    const saved = dbSaveConsultation(
+      req.params.id,
+      JSON.stringify(result.prescription),
+      JSON.stringify(result.clinicalNotes)
+    );
+
+    res.json({ success: saved, prescription: result.prescription, clinicalNotes: result.clinicalNotes });
+  } catch (e) {
+    res.status(500).json({ success: false, error: (e as Error).message });
+  }
+});
+
 
 // ─── Doctor Change Password ───
 

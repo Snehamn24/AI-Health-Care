@@ -26,6 +26,8 @@ function sessionToDb(session: IntakeSession): DbSession {
     approval_status: (session as any).approvalStatus || 'pending',
     doctor_viewed: (session as any).doctorViewed ? 1 : 0,
     doctor_viewed_at: (session as any).doctorViewedAt || null,
+    prescription_json: (session as any).prescription ? JSON.stringify((session as any).prescription) : null,
+    clinical_notes_json: (session as any).clinicalNotes ? JSON.stringify((session as any).clinicalNotes) : null,
     created_at: session.createdAt,
     updated_at: session.updatedAt,
   };
@@ -47,9 +49,13 @@ function dbToSession(row: DbSession): IntakeSession {
     fieldsCollected: JSON.parse(row.fields_collected_json || '[]'),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    // Extra fields for admin
+    // Extra fields for admin/doctor/patient views
     ...(row.approval_status ? { approvalStatus: row.approval_status } : {}),
     ...(row.patient_id ? { linkedPatientId: row.patient_id } : {}),
+    ...(row.doctor_viewed !== undefined ? { doctorViewed: row.doctor_viewed === 1 } : {}),
+    ...(row.doctor_viewed_at ? { doctorViewedAt: row.doctor_viewed_at } : {}),
+    ...(row.prescription_json ? { prescription: JSON.parse(row.prescription_json) } : { prescription: null }),
+    ...(row.clinical_notes_json ? { clinicalNotes: JSON.parse(row.clinical_notes_json) } : { clinicalNotes: null }),
   } as IntakeSession;
 }
 

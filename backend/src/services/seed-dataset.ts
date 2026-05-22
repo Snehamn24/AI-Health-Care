@@ -184,6 +184,8 @@ export function seedDatabase(): void {
         approval_status: s.status,
         doctor_viewed: 0,
         doctor_viewed_at: null,
+        prescription_json: null,
+        clinical_notes_json: null,
         created_at: created,
         updated_at: created,
       });

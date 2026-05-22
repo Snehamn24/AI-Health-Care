@@ -455,3 +455,119 @@ function demoConversationalReply(
   }
   return "I've recorded that information. Is there anything else about your symptoms you'd like to add?";
 }
+
+// ─── Prescription & Clinical Notes Generation ───
+
+export interface MedicineEntry {
+  name: string;
+  dose: string;
+  frequency: string;
+  duration: string;
+  instructions?: string;
+}
+
+export interface ConsultationOutput {
+  prescription: {
+    doctorName: string;
+    department: string;
+    date: string;
+    medicines: MedicineEntry[];
+    generalInstructions: string;
+    generatedAt: string;
+  };
+  clinicalNotes: {
+    patientSummary: string;
+    conditionVerified: string;
+    medicinesPrescribed: MedicineEntry[];
+    followUpRequired: boolean;
+    followUpDate: string | null;
+    followUpReason: string | null;
+    priority: string;
+    additionalNotes: string;
+    completedAt: string;
+  };
+}
+
+export async function generatePrescriptionAndNotes(params: {
+  patientProfile: any;
+  symptoms: string[];
+  severity: string;
+  urgency: string;
+  conditionVerified: string;
+  medicines: MedicineEntry[];
+  followUpDate: string | null;
+  doctorName: string;
+  department: string;
+  additionalNotes: string;
+}): Promise<ConsultationOutput> {
+  const now = new Date().toISOString();
+  const needsFollowUp = ['medium', 'high', 'urgent', 'emergency'].includes(params.urgency);
+
+  const demoPrescription = {
+    doctorName: params.doctorName,
+    department: params.department,
+    date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' }),
+    medicines: params.medicines,
+    generalInstructions: `Take all medications as prescribed. Avoid self-medication. Report any adverse reactions immediately. Stay hydrated and rest adequately.`,
+    generatedAt: now,
+  };
+
+  const demoClinicalNotes = {
+    patientSummary: `${params.patientProfile?.name || 'Patient'}, ${params.patientProfile?.age || 'unknown age'} ${params.patientProfile?.gender || ''}, presented with ${params.symptoms.join(', ')}. Severity assessed as ${params.severity}.`,
+    conditionVerified: params.conditionVerified,
+    medicinesPrescribed: params.medicines,
+    followUpRequired: needsFollowUp,
+    followUpDate: needsFollowUp ? params.followUpDate : null,
+    followUpReason: needsFollowUp ? `Patient urgency level is ${params.urgency}. Monitor treatment response and reassess condition.` : null,
+    priority: params.urgency,
+    additionalNotes: params.additionalNotes || 'Patient advised on medication compliance and lifestyle modifications.',
+    completedAt: now,
+  };
+
+  if (config.demoMode && !config.gemini.apiKey) {
+    return { prescription: demoPrescription, clinicalNotes: demoClinicalNotes };
+  }
+
+  try {
+    const result = await generateJSON<ConsultationOutput>(
+      `You are a clinical documentation assistant. Generate a professional prescription and clinical notes for a completed doctor consultation.
+
+Patient: ${params.patientProfile?.name}, Age: ${params.patientProfile?.age}, Gender: ${params.patientProfile?.gender}
+Symptoms: ${params.symptoms.join(', ')}
+Severity: ${params.severity} | Urgency: ${params.urgency}
+Verified Condition: ${params.conditionVerified}
+Doctor: ${params.doctorName} (${params.department})
+Medicines prescribed: ${JSON.stringify(params.medicines)}
+Follow-up date: ${params.followUpDate || 'Not required'}
+Additional notes: ${params.additionalNotes}
+
+Return a single JSON object with this exact structure:
+{
+  "prescription": {
+    "doctorName": "${params.doctorName}",
+    "department": "${params.department}",
+    "date": "formatted date",
+    "medicines": [{ "name": "...", "dose": "...", "frequency": "...", "duration": "...", "instructions": "..." }],
+    "generalInstructions": "professional patient instructions",
+    "generatedAt": "${now}"
+  },
+  "clinicalNotes": {
+    "patientSummary": "2-3 sentence professional clinical summary",
+    "conditionVerified": "${params.conditionVerified}",
+    "medicinesPrescribed": [same medicines array],
+    "followUpRequired": ${needsFollowUp},
+    "followUpDate": ${params.followUpDate ? `"${params.followUpDate}"` : 'null'},
+    "followUpReason": "clinical reason for follow-up or null",
+    "priority": "${params.urgency}",
+    "additionalNotes": "professional clinical observations",
+    "completedAt": "${now}"
+  }
+}`,
+      { prescription: demoPrescription, clinicalNotes: demoClinicalNotes }
+    );
+    return result;
+  } catch {
+    return { prescription: demoPrescription, clinicalNotes: demoClinicalNotes };
+  }
+}
+
