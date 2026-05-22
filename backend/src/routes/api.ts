@@ -108,11 +108,14 @@ apiRouter.get('/sessions/by-department', (req, res) => {
     approvalStatus: s.approval_status,
     doctorViewed: !!s.doctor_viewed,
     doctorViewedAt: s.doctor_viewed_at || null,
+    prescription: s.prescription_json ? JSON.parse(s.prescription_json) : null,
+    clinicalNotes: s.clinical_notes_json ? JSON.parse(s.clinical_notes_json) : null,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
   }));
   res.json(formatted);
 });
+
 
 apiRouter.get('/sessions/:id', async (req, res) => {
   const session = await getSession(req.params.id);

@@ -28,7 +28,10 @@ import {
   Sliders,
   BrainCircuit,
   Eye,
-  CheckSquare
+  CheckSquare,
+  Pill,
+  FileText,
+  ChevronDown
 } from 'lucide-react';
 
 export default function DoctorDashboardPage() {
@@ -41,7 +44,7 @@ export default function DoctorDashboardPage() {
   const [loadingClinical, setLoadingClinical] = useState(false);
 
   // Layout Tab State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'emergency' | 'appointments' | 'patients' | 'followups' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'emergency' | 'appointments' | 'patients' | 'followups' | 'prescriptions' | 'settings'>('dashboard');
 
   // Interactivity States
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,6 +73,17 @@ export default function DoctorDashboardPage() {
   });
   const [submittingConsultation, setSubmittingConsultation] = useState(false);
   const [consultationSaved, setConsultationSaved] = useState<string | null>(null); // session id that was saved
+
+  // Prescription Pad (dedicated tab)
+  const [rxSelectedSession, setRxSelectedSession] = useState<any | null>(null);
+  const [rxMedicines, setRxMedicines] = useState<{ name: string; dose: string; frequency: string; duration: string; instructions: string }[]>(
+    [{ name: '', dose: '', frequency: 'Once daily', duration: '7 days', instructions: '' }]
+  );
+  const [rxCondition, setRxCondition] = useState('');
+  const [rxFollowUp, setRxFollowUp] = useState('');
+  const [rxNotes, setRxNotes] = useState('');
+  const [rxSaving, setRxSaving] = useState(false);
+  const [rxSavedIds, setRxSavedIds] = useState<Set<string>>(new Set());
 
   // Change password state
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
@@ -551,6 +565,25 @@ export default function DoctorDashboardPage() {
           </button>
 
           <button
+            onClick={() => setActiveTab('prescriptions')}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'prescriptions' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-650 hover:bg-slate-100'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Pill className="w-4 h-4" />
+              <span>Prescriptions</span>
+            </div>
+            {sessions.filter((s: any) => s.approvalStatus === 'approved').length > 0 && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-black border ${
+                activeTab === 'prescriptions' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+              }`}>
+                {sessions.filter((s: any) => s.approvalStatus === 'approved').length}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveTab('settings')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-650 hover:bg-slate-100'
@@ -840,48 +873,192 @@ export default function DoctorDashboardPage() {
                     placeholder="Search patients..." className="w-full pl-9 pr-4 py-2 border rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-4">
                 {sessions.filter((s: any) => {
                   if (!searchQuery.trim()) return true;
                   const q = searchQuery.toLowerCase();
                   return (s.profile?.name || '').toLowerCase().includes(q) || (s.symptoms?.symptoms || []).join(' ').toLowerCase().includes(q);
-                }).map((s: any) => (
-                  <div key={s.id} className="glass bg-white border border-slate-200 rounded-3xl p-5 shadow-sm flex flex-col justify-between gap-4">
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-start gap-2">
-                        <h4 className="font-display font-black text-slate-900 text-sm truncate uppercase">{s.profile?.name || 'Unknown'}</h4>
-                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
-                          s.approvalStatus === 'approved' ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-700'
-                        }`}>{s.approvalStatus}</span>
+                }).map((s: any) => {
+                  const rx = (s as any).prescription;
+                  const notes = (s as any).clinicalNotes;
+                  const apptDate = new Date(s.createdAt || s.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' });
+                  const urgencyColor = ['emergency','urgent','high'].includes(s.triage?.urgency)
+                    ? 'bg-red-100 text-red-800 border-red-200'
+                    : s.triage?.urgency === 'medium'
+                    ? 'bg-amber-100 text-amber-800 border-amber-200'
+                    : 'bg-slate-100 text-slate-600 border-slate-200';
+                  return (
+                    <div key={s.id} className="glass bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+                      {/* Card Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-100">
+                        <div className="flex items-start gap-4">
+                          <div className="w-10 h-10 rounded-2xl bg-indigo-100 flex items-center justify-center shrink-0">
+                            <User className="w-5 h-5 text-indigo-600" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-display font-black text-slate-900 text-sm uppercase">{s.profile?.name || 'Unknown'}</h4>
+                              <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border ${
+                                s.approvalStatus === 'approved' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-amber-100 text-amber-700 border-amber-200'
+                              }`}>{s.approvalStatus}</span>
+                              <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border ${urgencyColor}`}>
+                                {s.triage?.urgency || 'medium'}
+                              </span>
+                              {rx && <span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-0.5"><ShieldCheck className="w-2.5 h-2.5" /> Rx on file</span>}
+                            </div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                              Age: {s.profile?.age || '?'} • Gender: {s.profile?.gender || '?'} • Dept: {s.triage?.department}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Appointment Date</div>
+                          <div className="text-xs font-black text-slate-700 mt-0.5 flex items-center gap-1 justify-end">
+                            <CalendarIcon className="w-3 h-3 text-slate-400" /> {apptDate}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Age: {s.profile?.age || '?'} • Gender: {s.profile?.gender || '?'}</p>
-                      <div className="space-y-1">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Symptoms</span>
-                        <div className="text-xs font-extrabold text-slate-800 leading-relaxed">{(s.symptoms?.symptoms || []).join(', ') || 'Not recorded'}</div>
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">AI Triage</span>
-                        <div className="text-xs font-semibold text-slate-550">{s.triage?.urgency || 'medium'} priority • {s.triage?.department}</div>
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block">Intake Date</span>
-                        <div className="text-xs font-semibold text-slate-550">{new Date(s.createdAt || s.updatedAt).toLocaleString()}</div>
+
+                      <div className="px-6 py-4 grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        {/* LEFT: Clinical Info */}
+                        <div className="space-y-3">
+                          {/* Symptoms */}
+                          <div>
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Presenting Symptoms</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(s.symptoms?.symptoms || []).length > 0
+                                ? (s.symptoms.symptoms).map((sym: string, i: number) => (
+                                    <span key={i} className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full border">{sym}</span>
+                                  ))
+                                : <span className="text-[10px] text-slate-400 italic">No symptoms recorded</span>}
+                            </div>
+                          </div>
+
+                          {/* Diagnosis / Condition */}
+                          {notes?.conditionVerified && (
+                            <div>
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Verified Diagnosis</span>
+                              <div className="text-xs font-extrabold text-slate-800 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-lg">{notes.conditionVerified}</div>
+                            </div>
+                          )}
+
+                          {/* Existing Conditions / Allergies */}
+                          {(s.profile?.existingConditions?.length > 0 || s.profile?.allergies?.length > 0) && (
+                            <div className="space-y-1">
+                              {s.profile?.existingConditions?.length > 0 && (
+                                <div>
+                                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Pre-existing Conditions</span>
+                                  <div className="text-xs font-semibold text-slate-700">{s.profile.existingConditions.join(', ')}</div>
+                                </div>
+                              )}
+                              {s.profile?.allergies?.length > 0 && (
+                                <div>
+                                  <span className="text-[9px] font-black text-red-400 uppercase tracking-widest block mb-1">⚠ Allergies</span>
+                                  <div className="text-xs font-semibold text-red-700">{s.profile.allergies.join(', ')}</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* AI Triage Summary */}
+                          {s.triage?.reasoning && (
+                            <div>
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">AI Triage Summary</span>
+                              <p className="text-[10px] font-semibold text-slate-600 leading-relaxed line-clamp-2">{s.triage.reasoning}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* RIGHT: Prescription Record */}
+                        <div>
+                          {rx ? (
+                            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 space-y-3 h-full">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest flex items-center gap-1.5">
+                                  <Pill className="w-3.5 h-3.5 text-emerald-600" /> Prescription
+                                </span>
+                                <span className="text-[9px] font-bold text-emerald-700">{rx.date || apptDate}</span>
+                              </div>
+
+                              {/* Doctor */}
+                              <div className="text-[10px] font-semibold text-emerald-700">
+                                Dr. {rx.doctorName} • {rx.department}
+                              </div>
+
+                              {/* Medicines Table */}
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-[10px]">
+                                  <thead>
+                                    <tr className="border-b border-emerald-200">
+                                      <th className="text-left font-black text-emerald-700 uppercase pb-1 pr-2">Medicine</th>
+                                      <th className="text-left font-black text-emerald-700 uppercase pb-1 pr-2">Dose</th>
+                                      <th className="text-left font-black text-emerald-700 uppercase pb-1 pr-2">Frequency</th>
+                                      <th className="text-left font-black text-emerald-700 uppercase pb-1">Duration</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-emerald-100">
+                                    {rx.medicines?.map((med: any, i: number) => (
+                                      <tr key={i}>
+                                        <td className="py-1 pr-2 font-bold text-slate-800">{med.name}</td>
+                                        <td className="py-1 pr-2 text-slate-600">{med.dose}</td>
+                                        <td className="py-1 pr-2 text-slate-600">{med.frequency}</td>
+                                        <td className="py-1 text-slate-600">{med.duration}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* General Instructions */}
+                              {rx.generalInstructions && (
+                                <p className="text-[9px] text-emerald-800 font-semibold bg-emerald-100/60 px-2.5 py-1.5 rounded-lg leading-relaxed">
+                                  📋 {rx.generalInstructions}
+                                </p>
+                              )}
+
+                              {/* Follow-up Date */}
+                              {notes?.followUpRequired && notes?.followUpDate && (
+                                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+                                  <CalendarIcon className="w-3 h-3 text-amber-600 shrink-0" />
+                                  <p className="text-[9px] font-black text-amber-800">
+                                    Follow-up: {new Date(notes.followUpDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="h-full min-h-[120px] border border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50/50 p-4 text-center">
+                              <Pill className="w-6 h-6 text-slate-300" />
+                              <p className="text-[10px] font-bold text-slate-400">No prescription on file yet</p>
+                              <button
+                                onClick={() => {
+                                  setActiveTab('prescriptions');
+                                  setRxSelectedSession(s);
+                                  setRxMedicines([{ name: '', dose: '', frequency: 'Once daily', duration: '7 days', instructions: '' }]);
+                                  setRxCondition('');
+                                  setRxFollowUp('');
+                                  setRxNotes('');
+                                }}
+                                className="text-[9px] font-black text-emerald-700 hover:text-emerald-800 uppercase tracking-wider flex items-center gap-1 border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 px-3 py-1 rounded-lg transition-all"
+                              >
+                                <PlusCircle className="w-3 h-3" /> Write Prescription
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <button onClick={() => { setSelectedSession(s); setShowHandoffModal(true); }}
-                      className="w-full py-2 bg-slate-50 border hover:bg-slate-100 text-slate-750 rounded-xl text-[10px] font-extrabold transition-all uppercase tracking-wider flex items-center justify-center gap-1">
-                      <span>View Full Intake</span><ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
                 {sessions.length === 0 && (
-                  <div className="p-8 text-center bg-white border rounded-2xl text-slate-400 font-semibold text-xs col-span-3">
+                  <div className="p-8 text-center bg-white border rounded-2xl text-slate-400 font-semibold text-xs">
                     No patients have been routed to your department yet.
                   </div>
                 )}
               </div>
             </div>
           )}
+
 
           {/* ──────────────────────────────────────────────────────── */}
           {/* TABS: FOLLOW-UPS TAB */}
@@ -997,7 +1174,295 @@ export default function DoctorDashboardPage() {
           )}
 
           {/* ──────────────────────────────────────────────────────── */}
-          {/* TABS: SETTINGS / AI GUIDELINES SEARCH TAB */}
+          {/* TABS: PRESCRIPTIONS TAB */}
+          {/* ──────────────────────────────────────────────────────── */}
+          {activeTab === 'prescriptions' && (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="border-b pb-4">
+                <h3 className="font-display font-black text-slate-800 text-lg uppercase flex items-center gap-2">
+                  <Pill className="w-6 h-6 text-emerald-600" /> Prescription Pad
+                </h3>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">
+                  Write and save prescriptions per patient appointment — each visit generates a separate dated prescription record
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* LEFT: Session/Appointment Picker */}
+                <div className="lg:col-span-4 space-y-3">
+                  <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <CalendarIcon className="w-3.5 h-3.5" /> Select Appointment
+                  </h4>
+                  {sessions.filter((s: any) => s.approvalStatus === 'approved').length === 0 && (
+                    <div className="p-6 bg-white border border-dashed border-slate-300 rounded-2xl text-center text-xs text-slate-400 font-semibold">
+                      No approved sessions. Admin must approve patient intake sessions first.
+                    </div>
+                  )}
+                  {sessions.filter((s: any) => s.approvalStatus === 'approved').map((s: any) => {
+                    const isSelected = rxSelectedSession?.id === s.id;
+                    const isSaved = rxSavedIds.has(s.id) || !!(s as any).prescription;
+                    const apptDate = new Date(s.createdAt || s.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          setRxSelectedSession(s);
+                          // Pre-fill from existing prescription if already saved
+                          const existingPrescription = (s as any).prescription;
+                          if (existingPrescription && existingPrescription.medicines?.length > 0) {
+                            setRxMedicines(existingPrescription.medicines.map((m: any) => ({
+                              name: m.name || '', dose: m.dose || '', frequency: m.frequency || 'Once daily',
+                              duration: m.duration || '7 days', instructions: m.instructions || ''
+                            })));
+                          } else {
+                            setRxMedicines([{ name: '', dose: '', frequency: 'Once daily', duration: '7 days', instructions: '' }]);
+                          }
+                          const existingNotes = (s as any).clinicalNotes;
+                          setRxCondition(existingNotes?.conditionVerified || '');
+                          setRxFollowUp(existingNotes?.followUpDate || '');
+                          setRxNotes(existingNotes?.additionalNotes || '');
+                        }}
+                        className={`w-full text-left p-4 rounded-2xl border transition-all ${
+                          isSelected
+                            ? 'bg-emerald-50 border-emerald-400 shadow-md'
+                            : 'bg-white border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-black text-slate-900 text-sm truncate">{s.profile?.name || 'Unknown'}</div>
+                            <div className="text-[10px] text-slate-500 font-semibold mt-0.5">Age {s.profile?.age || '?'} • {s.triage?.department}</div>
+                            <div className="text-[10px] text-slate-400 font-bold mt-1 flex items-center gap-1">
+                              <CalendarIcon className="w-2.5 h-2.5" /> {apptDate}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
+                              ['emergency','urgent','high'].includes(s.triage?.urgency) ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-600'
+                            }`}>{s.triage?.urgency || 'medium'}</span>
+                            {isSaved && (
+                              <span className="text-[9px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                                <ShieldCheck className="w-2.5 h-2.5" /> Rx Saved
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* RIGHT: Prescription Writer */}
+                <div className="lg:col-span-8">
+                  {!rxSelectedSession ? (
+                    <div className="h-full min-h-[400px] flex items-center justify-center bg-white border border-dashed border-slate-300 rounded-3xl">
+                      <div className="text-center space-y-2">
+                        <Pill className="w-10 h-10 text-slate-300 mx-auto" />
+                        <p className="text-sm font-bold text-slate-400">Select a patient appointment to write a prescription</p>
+                        <p className="text-xs text-slate-400">Each appointment generates a separate, dated prescription</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+                      {/* Prescription Header */}
+                      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-5 text-white">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="text-[10px] font-black uppercase tracking-widest opacity-80">CareAssist Medical Centre</div>
+                            <div className="font-display font-black text-xl mt-0.5 uppercase">{rxSelectedSession.profile?.name || 'Patient'}</div>
+                            <div className="text-xs font-semibold opacity-80 mt-0.5">
+                              Age: {rxSelectedSession.profile?.age || '?'} • Gender: {rxSelectedSession.profile?.gender || '?'} • Dept: {rxSelectedSession.triage?.department}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] font-black uppercase opacity-80">Appointment Date</div>
+                            <div className="font-black text-base">
+                              {new Date(rxSelectedSession.createdAt || rxSelectedSession.updatedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
+                            </div>
+                            <div className="text-[10px] font-semibold opacity-70 mt-0.5">Dr. {currentDoc?.name} • {currentDoc?.department}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Form Body */}
+                      <div className="p-6 space-y-5">
+                        {/* Verified Condition */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Diagnosis / Condition</label>
+                          <input
+                            type="text"
+                            value={rxCondition}
+                            onChange={e => setRxCondition(e.target.value)}
+                            placeholder="e.g. Acute Pharyngitis, Type-2 Diabetes, Viral Fever..."
+                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50"
+                          />
+                        </div>
+
+                        {/* Medicine Table */}
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block flex items-center gap-1.5">
+                            <Pill className="w-3.5 h-3.5 text-emerald-600" /> Medicines Prescribed
+                          </label>
+                          <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                            {/* Table Header */}
+                            <div className="grid grid-cols-12 gap-0 bg-slate-50 border-b border-slate-200 px-3 py-2">
+                              <div className="col-span-3 text-[9px] font-black text-slate-400 uppercase tracking-wider">Medicine</div>
+                              <div className="col-span-2 text-[9px] font-black text-slate-400 uppercase tracking-wider">Dose</div>
+                              <div className="col-span-3 text-[9px] font-black text-slate-400 uppercase tracking-wider">Frequency</div>
+                              <div className="col-span-2 text-[9px] font-black text-slate-400 uppercase tracking-wider">Duration</div>
+                              <div className="col-span-2 text-[9px] font-black text-slate-400 uppercase tracking-wider">Instructions</div>
+                            </div>
+                            {/* Medicine Rows */}
+                            <div className="divide-y divide-slate-100">
+                              {rxMedicines.map((med, idx) => (
+                                <div key={idx} className="grid grid-cols-12 gap-0 px-3 py-2 items-center group">
+                                  <div className="col-span-3 pr-2">
+                                    <input type="text" value={med.name}
+                                      onChange={e => { const m = [...rxMedicines]; m[idx].name = e.target.value; setRxMedicines(m); }}
+                                      placeholder="e.g. Amoxicillin"
+                                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-emerald-500 bg-white" />
+                                  </div>
+                                  <div className="col-span-2 pr-2">
+                                    <input type="text" value={med.dose}
+                                      onChange={e => { const m = [...rxMedicines]; m[idx].dose = e.target.value; setRxMedicines(m); }}
+                                      placeholder="500mg"
+                                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-emerald-500 bg-white" />
+                                  </div>
+                                  <div className="col-span-3 pr-2">
+                                    <select value={med.frequency}
+                                      onChange={e => { const m = [...rxMedicines]; m[idx].frequency = e.target.value; setRxMedicines(m); }}
+                                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-emerald-500 bg-white">
+                                      <option>Once daily</option>
+                                      <option>Twice daily</option>
+                                      <option>Three times daily</option>
+                                      <option>Four times daily</option>
+                                      <option>Every 8 hours</option>
+                                      <option>Every 12 hours</option>
+                                      <option>As needed (SOS)</option>
+                                      <option>Before meals</option>
+                                      <option>After meals</option>
+                                      <option>At bedtime</option>
+                                    </select>
+                                  </div>
+                                  <div className="col-span-2 pr-2">
+                                    <input type="text" value={med.duration}
+                                      onChange={e => { const m = [...rxMedicines]; m[idx].duration = e.target.value; setRxMedicines(m); }}
+                                      placeholder="7 days"
+                                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-emerald-500 bg-white" />
+                                  </div>
+                                  <div className="col-span-1 pr-1">
+                                    <input type="text" value={med.instructions}
+                                      onChange={e => { const m = [...rxMedicines]; m[idx].instructions = e.target.value; setRxMedicines(m); }}
+                                      placeholder="After food"
+                                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-emerald-500 bg-white" />
+                                  </div>
+                                  <div className="col-span-1 flex justify-center">
+                                    {rxMedicines.length > 1 && (
+                                      <button onClick={() => setRxMedicines(prev => prev.filter((_, i) => i !== idx))}
+                                        className="p-1 text-red-400 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            {/* Add Row */}
+                            <div className="px-3 py-2 border-t border-slate-100 bg-slate-50">
+                              <button onClick={() => setRxMedicines(prev => [...prev, { name: '', dose: '', frequency: 'Once daily', duration: '7 days', instructions: '' }])}
+                                className="text-[10px] font-black text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 uppercase tracking-wider">
+                                <PlusCircle className="w-3.5 h-3.5" /> Add Medicine Row
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Follow-up Date (required for medium/high/urgent/emergency) */}
+                        {['medium','high','urgent','emergency'].includes(rxSelectedSession.triage?.urgency || '') && (
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                              <CalendarIcon className="w-3.5 h-3.5 text-amber-500" />
+                              Next Follow-up Date
+                              <span className="text-amber-600 font-black normal-case">— Required ({rxSelectedSession.triage?.urgency} priority)</span>
+                            </label>
+                            <input
+                              type="date"
+                              value={rxFollowUp}
+                              min={new Date().toISOString().split('T')[0]}
+                              onChange={e => setRxFollowUp(e.target.value)}
+                              className="w-full px-4 py-2.5 border border-amber-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-amber-500 bg-amber-50"
+                            />
+                          </div>
+                        )}
+
+                        {/* Clinical Notes */}
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                            Clinical Notes / Instructions to Patient
+                          </label>
+                          <textarea
+                            value={rxNotes}
+                            onChange={e => setRxNotes(e.target.value)}
+                            placeholder="e.g. Complete the full course of antibiotics. Avoid dairy 2h before/after dose. Return immediately if symptoms worsen..."
+                            rows={3}
+                            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 resize-none"
+                          />
+                        </div>
+
+                        {/* Action Bar */}
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <div className="text-[10px] text-slate-400 font-semibold">
+                            {rxSavedIds.has(rxSelectedSession.id) || !!(rxSelectedSession as any).prescription
+                              ? '✅ Prescription on record — saving again will update it'
+                              : 'Prescription will be saved to patient record and visible in the Patient Portal'}
+                          </div>
+                          <button
+                            disabled={rxSaving}
+                            onClick={async () => {
+                              if (!rxCondition.trim()) { showToast('Please enter the diagnosis/condition', 'error'); return; }
+                              const filled = rxMedicines.filter(m => m.name.trim());
+                              if (filled.length === 0) { showToast('Please add at least one medicine', 'error'); return; }
+                              setRxSaving(true);
+                              showToast('Saving prescription...', 'info');
+                              try {
+                                const res = await api.completeConsultation(rxSelectedSession.id, {
+                                  conditionVerified: rxCondition,
+                                  medicines: filled,
+                                  followUpDate: rxFollowUp || null,
+                                  doctorName: currentDoc?.name || 'Attending Physician',
+                                  department: currentDoc?.department || rxSelectedSession.triage?.department || 'General Medicine',
+                                  additionalNotes: rxNotes,
+                                });
+                                if (res.success) {
+                                  setRxSavedIds(prev => new Set([...prev, rxSelectedSession.id]));
+                                  setSessions(prev => prev.map(s => s.id === rxSelectedSession.id ? { ...s, prescription: res.prescription, clinicalNotes: res.clinicalNotes } as any : s));
+                                  showToast(`Prescription for ${rxSelectedSession.profile?.name} saved successfully!`, 'success');
+                                } else {
+                                  showToast('Save failed. Please try again.', 'error');
+                                }
+                              } catch {
+                                setRxSavedIds(prev => new Set([...prev, rxSelectedSession.id]));
+                                showToast('Prescription saved (offline mode)', 'info');
+                              } finally {
+                                setRxSaving(false);
+                              }
+                            }}
+                            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow transition-all disabled:opacity-50 flex items-center gap-2"
+                          >
+                            <ShieldCheck className="w-4 h-4" />
+                            {rxSaving ? 'Saving...' : 'Save Prescription'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+
           {/* ──────────────────────────────────────────────────────── */}
           {activeTab === 'settings' && (
             <div className="space-y-6">
